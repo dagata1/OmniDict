@@ -346,7 +346,7 @@ namespace GameDictApp {
                         string up="请识别并深度解析截图中出现的文字内容，提供精准翻译与词汇语言拆解：";
                         body="{\"model\":\""+currentModel+"\",\"messages\":["+
                             "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
-                            "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+up+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}]}]"+
+                            "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+up+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}}]}"+
                             "]}";
                     } else {
                         string ocrText=OcrHelper.ExtractText(imgBytes);
@@ -370,13 +370,24 @@ namespace GameDictApp {
             var req=(HttpWebRequest)WebRequest.Create(apiBase);
             req.Method="POST";req.ContentType="application/json";
             req.Headers["Authorization"]="Bearer "+apiKey;
-            req.UserAgent="Codex/1.0";req.Timeout=30000;
-            byte[] data=Encoding.UTF8.GetBytes(jsonBody);
+            req.UserAgent="Codex/1.0";req.Timeout=60000;
+            Logger.Info("PostAI body_len="+jsonBody.Length+" model="+currentModel+" base="+apiBase);
+            byte[] data=new UTF8Encoding(false).GetBytes(jsonBody);
             req.ContentLength=data.Length;
             using(Stream st=req.GetRequestStream()) st.Write(data,0,data.Length);
-            using(var resp=(HttpWebResponse)req.GetResponse())
-            using(var rdr=new StreamReader(resp.GetResponseStream(),Encoding.UTF8))
-                return ExtractContent(rdr.ReadToEnd());
+            try{
+                using(var resp=(HttpWebResponse)req.GetResponse())
+                using(var rdr=new StreamReader(resp.GetResponseStream(),Encoding.UTF8))
+                    return ExtractContent(rdr.ReadToEnd());
+            }catch(WebException wex){
+                string errBody="";
+                if(wex.Response!=null){
+                    using(var er=new StreamReader(wex.Response.GetResponseStream(),Encoding.UTF8))
+                        errBody=er.ReadToEnd();
+                }
+                Logger.Error("PostAI HTTP error body="+errBody,wex);
+                throw;
+            }
         }
 
         private string ExtractContent(string json) {
