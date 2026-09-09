@@ -16,7 +16,16 @@ using System.Runtime.InteropServices;
 namespace GameDictApp {
     public class Program {
         [STAThread]
-        public static void Main(string[] args) { new App().Run(new MainWindow()); }
+        public static void Main(string[] args) {
+            string _lp=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","gamedict.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_lp));
+            try{using(var _fs2=new System.IO.FileStream(_lp,System.IO.FileMode.Append,System.IO.FileAccess.Write,System.IO.FileShare.ReadWrite))
+                using(var _sw2=new System.IO.StreamWriter(_fs2,System.Text.Encoding.UTF8))
+                    _sw2.Write(System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [INFO ] App.Main start\n");}catch{}
+            AppDomain.CurrentDomain.UnhandledException+=(s,e)=>{try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+e.ExceptionObject+"\n",System.Text.Encoding.UTF8);}catch{}};
+            try { new App().Run(new MainWindow()); }
+            catch(Exception ex){try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+ex.ToString()+"\n",System.Text.Encoding.UTF8);}catch{}}
+        }
     }
     public class App : Application {
         protected override void OnStartup(StartupEventArgs e) { base.OnStartup(e); }
@@ -636,7 +645,7 @@ namespace GameDictApp {
     public class SettingsDialog : Window {
         private TextBox TB,TK,CMBTEXT; private System.Windows.Controls.Primitives.Popup CMBPOPUP; private ListBox CMBLB; private MainWindow M;
         public SettingsDialog(MainWindow main) {
-            M=main; this.Title="设置"; this.Width=440; this.Height=330;
+            M=main; this.Title="设置"; this.Width=440; this.Height=380;
             this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
             this.Background=new SolidColorBrush(Color.FromRgb(0,0,0));
             // Global dark button style for this window
@@ -662,11 +671,7 @@ namespace GameDictApp {
             DockPanel hd=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
             hd.Children.Add(new TextBlock{Text="设置",FontSize=16,FontWeight=FontWeights.SemiBold,
                 Foreground=new SolidColorBrush(Color.FromRgb(220,220,230))});
-            Button cx=new Button{Content="✕",Width=24,Height=24,Background=Brushes.Transparent,
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,
-                Foreground=new SolidColorBrush(Color.FromRgb(110,110,125)),FontWeight=FontWeights.Bold};
-            cx.Click+=(s,e)=>this.Close();
-            DockPanel.SetDock(cx,Dock.Right); hd.Children.Add(cx); sp.Children.Add(hd);
+            sp.Children.Add(hd);
             sp.Children.Add(new TextBlock{Text="配置文件: "+GameDictConfig.ConfigPath,FontSize=10,
                 Foreground=new SolidColorBrush(Color.FromRgb(80,80,100)),
                 Margin=new Thickness(0,0,0,12),TextWrapping=TextWrapping.Wrap});
@@ -804,7 +809,8 @@ namespace GameDictApp {
                 BorderThickness=new Thickness(1),Foreground=new SolidColorBrush(Color.FromRgb(180,180,195)),Cursor=Cursors.Hand};
             cancel.Click+=(s,e)=>this.Close();
             btns.Children.Add(save); btns.Children.Add(cancel); sp.Children.Add(btns);
-            this.Content=sp;
+            var sv=new System.Windows.Controls.ScrollViewer{VerticalScrollBarVisibility=System.Windows.Controls.ScrollBarVisibility.Auto,Content=sp};
+            this.Content=sv;
             this.SourceInitialized+=(s,e)=>ApplyDarkTitleBar();
         }
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
@@ -1051,8 +1057,11 @@ namespace GameDictApp {
         public static void Error(string m,Exception ex=null){
             Write("ERROR",ex==null?m:m+" | "+ex.GetType().Name+": "+ex.Message+"\n"+ex.StackTrace);}
         private static void Write(string lv,string m){
-            try{lock(_lock)File.AppendAllText(LogPath,
-                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" ["+lv+"] "+m+"\n",Encoding.UTF8);}catch{}}
+            try{lock(_lock){
+                using(var fs=new FileStream(LogPath,FileMode.Append,FileAccess.Write,FileShare.ReadWrite))
+                using(var sw=new StreamWriter(fs,Encoding.UTF8))
+                    sw.Write(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" ["+lv+"] "+m+"\n");
+            }}catch{}}
     }
     internal static class EmbeddedIcon {
         public static readonly string IcoB64 = "AAABAAYAEBAAAAAAIADyAAAAZgAAACAgAAAAACAAcwEAAFgBAAAwMAAAAAAgAP0BAADLAgAAQEAAAAAAIABQAgAAyAQAAICAAAAAACAAjwQAABgHAAAAAAAAAAAgAIsJAACnCwAAiVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAuUlEQVR4nGNgGGjAiEtCTsnlP7rYo3t7MNQzEasZlzgTsZpxyTOiS544shHOr+vYD2c3VTjC2RY2/nDvMKKbDDKgpG71SRCbi0vEHCb/7dsbsFhPU6g5yAAQABnCxEAhYKLUABZiFS5NmQPxzqM5DAwMHKS5YHZUBwr/4bIfmAY8QkokoIACYXSDnsvthLMxYoEBCrClA2QbYYDR4ghYL4YXsCVX+SiEn2Hg/wkbsEVk5QWQZpgLKAYATL1Hbq8A2fsAAAAASUVORK5CYIKJUE5HDQoaCgAAAA1JSERSAAAAIAAAACAIBgAAAHN6evQAAAE6SURBVHicY2AY6YCRHE1ySi7/cck9ureHJDMZqWEpJY5hopXlxOpjpIXFpIQGEz0sx2ceEz0sx2cuE8MAA0ZCrjxxZCNOzXUd++HspgpHnOosbPxxpgcmfJbTCiDbw8QwwICFGEUldatPYhPn4hIxJ6SmpykUrgYbYKJ38KPbx0KMYly+QE6EhHw6+KNgoADLsIuCpSlzsDiEgz5RsBSr5QwMD5f9IK4olsOSFYktimdHdcDZz+V2wtmSj9zhbPkoDozimImBCgCX5eh8bCHBQshw9IoEK4hC9iE29Rw4o4GJkgYluQBnbUgPR6Cbz0RNw3EFM75cwIRNkNRQQE7d6JYh8xktjjDStFX8EI9PcTmCkRiDSXEINkeALP1/wuY/Nkcw0rNnhM0RjKQaSsgxhNIPyBHY0sKAAQDNqJcammenfAAAAABJRU5ErkJggolQTkcNChoKAAAADUlIRFIAAAAwAAAAMAgGAAAAVwL5hwAAAcRJREFUeJztmT9ugzAUxm0rQ5W5SxYi9RJlYKlUKWOnLnTNETp0ypApQ27QrM3SqWOlSl0Y6CUqwdIrdHNFFZAFBj+DHT8jvikCG37f+2MIJmTSpEGixLCCq1uuGpN/fxi7Lz0XtC0z1BW4KSPUNfhQI4wggu9zfYoFvG82GFZ46H0ZVnjo/bV7AJsY5uhDOBh2eBXPjGgqTd7AYze7z+r39ukGPC+M7sBjmQ/R7+IaXxMHSKPfxqfdA4UeN69fkHHz+eW17pz99r6aA5H3JUR1ywfLKpSf3pO8zwAjnmvWZ9LUxK4zsAdGSWxi3chaNWBKi3zVOPYTvOM3IAMXz2VHQpbxBUHZxC/rQ3Xs4bBuXKc8nx1/QSaYrS9mMpVwBbgMviyhErwwIZPI2QBWPY37Pomf410FCH0SZycD9UyIBrxfRln9gI0y0om+KFkp1fm0m1jn716leMBchaQlZLuZ+yqXcI2vB7BmIW/h6cyAKROqdb1N5XgaJq0c4y0h11nIANH/Pw8FMPW5RTSwlLzryAx2mdCOrgkjkCzQMKE8jbjKhNM9sgwQbZUJL3YpeYcJb/aJeYsJr3bqeRpx1ao0iZxZf5f223PncDwRAAAAAElFTkSuQmCCiVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACF0lEQVR4nO2bPU7DQBCFZ0Zb5AppgsQlSJEGCYmSigbaHIGCKkUqihwhLTRUlEiRaFKES0TCDVegC7KELStk7f0Z27uz/qpIHr+d93btdZQYYGBgIGWwy8Em51cH09psv+mkNwzFcF+BYOjG2w4CYzHeVhAYm3HuIChm8xzjU5+Dc+HTB3Y9YGiXBEky79IftSneFzZ9EiQOSZt9236JUyw0TPomDpGQaepf+Q6w2745n7t4+ig/Lx8vvfqYzm6cziPJs2/igyBxSPrsN/khSBxKYfbrfCku8YfF66dN/Wp5e+GrodOxgSBxFJeQ70xwaXivgInQ61/njyBxCBJHcQkNu0CkKC4hMbtAahAkjoIIGGfX2mPfk3e5AYxrjP+vGcnaBp/n6/L4/Xqu1S7qvl5+4Oxu5B9Att9gn4/DpsaPL4F8JeQh5NQFcfzTmYLQtsFsXRpbLcFYMzddBBDtLjD+u55db2zFzNsEQSDEvGsI1Oc/tLrmlC/UFXd5IzS5eXFongqAdALSVoHOD0HiUN1BKaugzgdB4lBTQeyroKl/4hCJGTItbDMElye4OgodnG4beyZIHLIpjmEV2My+0woIOQRb8zleZtp4XK6at3k0Pg7NNAQET9r6zmAaRLUuN33YzQ42ISAw0EUITVTN2oSAwEgfQegMmoaAIPidIZMQEIS/NdYUAkIC7w3a3hhFUg1hYABKfgF8nw6H5KrOdQAAAABJRU5ErkJggolQTkcNChoKAAAADUlIRFIAAACAAAAAgAgGAAAAwz5hywAABFZJREFUeJztnT1uFEEQhWctAl9hE6/EJXDgBAmJkIgEUh9hAyIHjgg4glOTEBEiIZE4sC+BtJNwBTKjtbQSgp3pn6mqftX1vgQJ2bM9/b6u/pmxPQyEEEIIIYQQQgiJwmoIwNnzV4+13zv+/N51H3V3c0vCjiiF+xuxCLxnIVw2HCH0XmRw1Vjk4L2KAN9IT6F7lAG2YT0E70GEkwGQHsNHvS8oIxE7qPdqANGISMGjidB8CogcPsL9n0S+eRRa9kOT8sPgcaYE8wrA8LH6x1QAho/XT2YCMHzM/jIRgOHj9pu6AAwfu/9UBWD4+P2oJgDD99GfKgIwfB00+lVcAIavi3T/Nn8WQNoiKgBHvw2S/SwmAMO3Raq/RQRg+G2Q6HeuAYKzamnh/d3XoRVXH3/893/XH14OrTi/eNPkETIrQHAWCcC5H4MlOVQLwPCxqM2DU0BwqgTg6MekJhdWgOBQgOAUC8Dyj01pPqwAwSkSgKPfByU5sQIE59kAxPbqy4Pm9T9dv33hsS2aZFcAln9f5ObFKSA4UFMASllEa4smrADByRKA879PcnJjBQgOBQgOBQgOBQhOUgAuAH2Tyo8VIDgUIDhQJ4FID2C2QG3RhBUgOBQgOFBTAEpZRGuLJqwAwaEAwaEAwaEAwaEAwYHaBfTCenyd/JpfZ98GBCiAUeDp7zkdWkABjIOfYvf599O/m3enWGuA1n/WDDX4tWD4/4pwkEGCVH5QFQDpAcx2oi23lzcmJ4R7CSyqAZQA6Nxmhv/+5vJB4loWElCADHLCygl9ahcwN51orw2y5net18I8/KLIdWKul9rO7X9RZGrur5EgtQbIOgjiQtBmLy89ynNy40ngDFOjfx+81kHOXoIpESR3BwcoQEX4FlhJQAEAw7eUIFsArgN8kZsXKwDo6LeqAhQgg9ZP7jQPg4rLes8/KrabGFXWD2iWtq1kumYFSIAQvmY7igXgYhCb0nxYAYJDAWbmWJTyP9eepbuBKgE4DWBSkwsrQHCqBWAVwKI2j0UVgBJgwD8cSYZmArAK+IYVIDgiArAK+EWsAniXYKNwyCLNsfaszu9WMFOAdwkiwjVAcMQF6K0K7ECmAa12qFQArxJswB7+pFg6/6tOAV4lQKwCmp+vugbwKMHG8Icycpj6XInRb7II9ChBJEx2Ad4k2IBUAe3Rb7oNpAR44T9dbzDG22vlu5nANXYNc58nHX6TgyBvlWAO6WqQut7j/YX44GkahpdqsMsIekk1KBVJshI0H41eJCgJKkeG3Gvtwz428qUkaC5ArxJI8HfIWhJACOBNhJ2BBMfC1ZAASoADkUVYJQKVlgBSAE8SSIlQEqKkBLACeBShRIilpVtKAngBvMowGpx3SEjgSgAPIozGB11LJXApAJoMY+PTzSUSuBeghRAj4HF2rQRwN4ImxQgYtqQEbm6O6EjA18I7I/cE8QAFCCCBxnsExAEa7w8QQgjphj/84eovxuFY4QAAAABJRU5ErkJggolQTkcNChoKAAAADUlIRFIAAAEAAAABAAgGAAAAXHKoZgAACVJJREFUeJzt3b1uHNcZgOFdIUVuQc0a8E1EhRoDBlK6SpO0voQUrlSocpEiF+A2alIZcJPAgBsVyk0YWDa6BXcMJoFjmRG5f+fMfD/P09iAJXp5Zr53zgzJ5W4HAAAAAAAAAAAAAAAAAAAARLPf+gUwx+HTz+9Hf8y7H793vhTjgCY1Y8BvJRD5OGAJRBz2c4lCbA5OQJkH/hRBiMXBCKDywJ8iCNuy+BvpPPSPEYP1WfAVGfrzicE6LPJkhv52YjCPhZ3E4I8nBONZ0IEM/XrEYAyLOIDB344Q3Mbi3cDgxyEE17FoVzD4cQnBZSzWBQx+HkJwHot0BoOflxA87dmJ/96e4c/N8XuaOj7CiVOP3cD/syAPGPz6hOAXbgE+YPh7cJx/oYROiNbumu8G2u8ADH9vh+bHv3UAuh98/qvzedBy+9P5gPO0u2a3BO12AIafpxyanR+tAtDt4HKdQ6PzpMV2p9MBZay74rcE5XcAhp9bHIqfP6UDUP3gsY5D4fOobAAqHzTWdyh6PpUMQNWDxbYOBc+rcgGoeJCI41Ds/CoVgGoHh5gOhc6zMgGodFCI71DkfCsRgCoHg1wOBc679AGocBDI65D8/EsdgOyLTw2HxOdh2gBkXnTqOSQ9H1MGIOtiU9sh4XmZLgAZF5k+DsnOz1QByLa49HRIdJ6mCUCmRYVDkvM1RQCyLCZkO29TBABoGoAMFYWs52/oAERfPMh+HocNQORFgyrnc9gAAE0DELWWUO28DheAiIsEVc/vUAGItjhQ/TwPFQCgaQAiVRG6nO8hAhBlMaDbeR8iAMA29l0r+O7tt7uOXn39w8k/8/qrz3ZdvXj5RatfQGoHAI09634PBFvbcg42C4Dhh+3nwS0ANLZJAFz9IcZc2AFAY6sHwNUf4syHHQA0tmoAXP0h1pzYAUBjqwXA1R/izYsdADS2SgBc/SHm3NgBQGMCAI1ND4DtP8SdHzsAaGxqAFz9IfYc2QFAYwIAjU0LgO0/xJ8nOwBoTACgsd/M+KAVtv9/fvX3f+2S+svrP/xu1sfOvC6z12a2Za5G/w4BOwBoTACgseEBqLD9h6hGz5cdADQ25SFgBZkfFs1kXWqxA4DGhgbA/T/MN3LO7ACgMQGAxgQAGhsWAPf/sJ5R82YHAI0JADQmANCYAEBjQwLgASCsb8Tc2QFAYwIAjQkANCYA0JgAQGMCAI0JADR2cwB8DwBs59b5swOAxgQAGvOuwAV/BZZfDfY472r8a3YA0JgAQGMCAI0JADTmIeAjPCz6OOtSix0ANCYA0JgAQGMCAI0JADQmANCYAEBjAgCNCQA0JgDQmABAY34WgHSe3/3+4r/z/vCPKa9l1z0Adz9+v/fGoEQa9nM/zvsCUVjm75a/bwdA2aG/5P/zvkAMriEAtBr6U///45vd7pM//nbXhQDQevA/5vjmp//8s0MIBIBNRBz8jiEQAFaVYfA7hUAAWEXGwe8QAt8IxHQVhv9jIajgWYSvRVJXteGPFIERc+cWoOCvwIrwq8H+9uU3017Dn7758uJjM+P1HAvcEggAw40etmsG/rGP8XMcR+5Mjm9+ShsBASDk8I8Y+qd8+J1/zwfEIGsEBIBQwz978J+KwfMbQ5AxAsO+CuBBYG+3Dv8y+FsM/8MQ3DrAaz0cHDVvQ4c2008Fvnv77a6jV1//cPLPvP7qs4s+5i1Xzmg/hPPi5RdDhnn2TmBUAHwfADepNPwjhzjClwnPIQCsPvzL4Ecf/g8jcG0IMkRgaAA8B+CULIP/UKSHeyPnzA6Aq3R8W65ProhA9F2AAHCxjsNfNQICwEU6D3/FCAwPgOcAVB7+rZ8JjJ4vOwCmXf2rDv+1EYi4CxAApqg+/BG/OhAmAG4D6qn6c/1ru2UXMGOu7AAYrsvVv8IuQAAYevXvNvzXRCDSs4BpAXAbAPHnyQ6AJ7n6194FtH1DkA9/7JNf++d3f/3fvy+/Kutc1jSfqTsAtwF9ZH4QFn0dZs6RWwDCb1OrOgZY3+kBsAuoz9V/3nrMnh87AGhMAAi7Pe3guPE6rxIAtwF12f7PW5c15sYOABpbLQB2ARBvXuwAoLFVA2AXUOvBlPv/MevzcL3XnBM7AGhs9QDYBUCc+bADgMY2CYBdAMSYCzsAaGyzANgFwPbzsOkOQARgW24BoLHNA2AXAI0DADQPgF0ANA7AQgSgcQDI/0MsXLc++xdvN7v4hQqAXQA0DsBCBKBxABYiAI0DQB6eA+Rel7ABsAvYlnf7WceWDwBDB2AhAtA4AAsRiC/Ldnctx0TrET4AbMdtQO3tf5oA2AXEl+mqN9Mx2TqkCMBCBKBxABYiEPs2INvVb7RLPv8I2/90AViIADQOwEIE1mUXUPPqnzYACxGIq1sEjok/37QBWIjAenxJcIxIV//0AViIQEyZr4qdPs/0AViIQMxdQPbhGP35Rbv6lwnAQgRiqhqBY5HPq0wAFiIQ81lAlWG55fOJePUvF4CFCMzXOQLHQsNfMgALEZivYwSOxYa/bAAWIhBT1ggck77uU8oPyeHTz++3fg2V3TIYGb634Dhg8CPvAsruAH5mJzDXLUMc/ap6HPT67t+9DHsRajUcdgNxhyXSbuA4KUwRdwLhXtBsIhB7cLYMwXGFHUm0CIR6MWsRgfhDtGYIjivfikSKQJgXsgUhyDFQM2Kw9fOHfZAIhHgRWxKBOWYOWJXvQdgHiMDmLyACEZgn4uCNHuD7G57ybx0BAfiAEMxRMQL7B4ObNQLlvw/gEr5nYI5IX+IbYf+Rgb1liLf8PgEn/CPsBubIvBvYnzHk2XYCAnCCEMyRKQT7CwczUwQE4Awi0DME+4229WtGQAAuIAQ9QrAfNIAZIiAAVxCCejHYTxq46BEQgBsIQe4Y7Fe6ykaOgAAMIATryvjOPPdBIyAAAwnBejJ+z8Z9wAikW8QsxGC8jEMfPQLpFzQ6IbhdhcGPGoFSCxudGPQd+qgRKL3IkYlBv6GPGIFWCx5V5xh0G/poEWi9+FFVDkL3gY8WAQcjgcxBMPCxI+DgJBUxCoY9XwQcsKJmBMKA14uAAwqNI+AtwaDx+xAIADSOgABA4wgIAAR29dP9M/+eAECxCFzy5wUAEjh3qH0VAIranxjua24XBAASeWzIr31WIACQzMNh3/r9DoENbPk7BQEAAIBdKv8GkkupVWtmzAwAAAAASUVORK5CYII=";
