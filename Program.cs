@@ -887,16 +887,11 @@ namespace GameDictApp {
             g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             // Header
             DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,8)};
-            StackPanel hl=new StackPanel{Orientation=Orientation.Horizontal};
             Border bg=new Border{Width=18,Height=18,CornerRadius=new CornerRadius(4),
-                Background=new SolidColorBrush(Color.FromRgb(99,102,241)),Margin=new Thickness(0,0,6,0)};
+                Background=new SolidColorBrush(Color.FromRgb(99,102,241)),VerticalAlignment=VerticalAlignment.Center};
             bg.Child=new TextBlock{Text="G",Foreground=Brushes.White,FontSize=10,FontWeight=FontWeights.Bold,
                 HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};
-            hl.Children.Add(bg);
-            hl.Children.Add(new TextBlock{Text="GameDict AI \u60ac\u6d6e\u91ca\u4e49",FontSize=12,
-                FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(215,215,225)),
-                VerticalAlignment=VerticalAlignment.Center});
-            DockPanel.SetDock(hl,Dock.Left); h.Children.Add(hl);
+            DockPanel.SetDock(bg,Dock.Left); h.Children.Add(bg);
             Button close=new Button{Content="\u2715",Width=26,Height=26,
                 Background=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
                 BorderThickness=new Thickness(0),Cursor=Cursors.Hand,
@@ -927,10 +922,7 @@ namespace GameDictApp {
             Border cc=new Border{CornerRadius=new CornerRadius(8),
                 Background=new SolidColorBrush(Color.FromArgb(25,255,255,255)),Padding=new Thickness(8,6,8,6)};
             cc.Child=contentBox; Grid.SetRow(cc,2); g.Children.Add(cc);
-            // Footer
-            TextBlock hint=new TextBlock{Text="\u6309 Esc \u5173\u95ed  |  \u53ef\u62d6\u52a8\u79fb\u52a8\u6d6e\u7a97",
-                FontSize=10.5,Foreground=new SolidColorBrush(Color.FromRgb(70,70,95)),Margin=new Thickness(0,6,0,0)};
-            Grid.SetRow(hint,3); g.Children.Add(hint);
+            // Footer removed per user request
             root.Child=g; this.Content=root;
             this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Hide();};
         }
