@@ -1,0 +1,10 @@
+# Binaries
+*.exe
+*.dll
+*.pdb
+
+# Local config & logs
+gamedict.toml
+gamedict.log
+history.dat
+images/
