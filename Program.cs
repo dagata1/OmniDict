@@ -341,11 +341,12 @@ namespace GameDictApp {
             bool vis=useVision;
             Task.Run(()=>{
                 try{
-                    string sysPmt="你是一位精通全球多语言的资深游戏本地化专家与语言私教。请识别截图中出现的内容（支持英语、日语、韩语、法德西俄等全语种）：\\n" +
-                        "1.「地道中文翻译」：结合上下文或游戏语境，给出最自然精准的中文译文；\\n" +
-                        "2.「核心词汇与解析」：拆解关键单词/词组/短语（注明读音/音标、词性、原形及在当前语境下的专有含义或背景梗）；\\n" +
-                        "3.「实用例句与拓展」：提供1~2个贴合场景的拓展用法或相似表达。\\n" +
-                        "输出要求排版清晰利落，避免长篇废话，重点突出。";
+                    string sysPmt="你是一位顶尖的多语言游戏本地化与攻略私教。请识别并精析截图中出现的内容（支持英语、日语、韩语、德语等全语种）：\\n" +
+                        "【中文意思】：结合当前游戏具体画面与语境，给出精准自然、地道的中文翻译；\\n" +
+                        "【核心重点】：提炼关键单词/生词/短语，标出读音/原形与在此处游戏场景下的含义及搭配；\\n" +
+                        "【游戏大师】：结合星露谷物语等游戏情境，给出1~2条关键背景提示、任务推进要点或下步建议；\\n" +
+                        "【顺便学一句】：提取一个最地道、最值得掌握的游戏用语或日常例句。\\n" +
+                        "排版要求紧凑干练，层次分明，无需多余套话。";
                     string body;
                     if(vis){
                         string b64=Convert.ToBase64String(imgBytes);
@@ -867,7 +868,7 @@ namespace GameDictApp {
             this.Background=Brushes.Transparent; this.Topmost=true;
             this.ShowInTaskbar=false; this.ResizeMode=ResizeMode.NoResize;
             Border root=new Border{CornerRadius=new CornerRadius(12),
-                Background=new SolidColorBrush(Color.FromArgb(235,10,10,12)),
+                Background=new SolidColorBrush(Color.FromArgb(170,12,12,16)),
                 BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
                 BorderThickness=new Thickness(1),Margin=new Thickness(8)};
             root.Effect=new DropShadowEffect{BlurRadius=22,Color=Colors.Black,Opacity=0.55,ShadowDepth=4,Direction=270};
@@ -920,7 +921,7 @@ namespace GameDictApp {
             ScrollViewer.SetVerticalScrollBarVisibility(contentBox,ScrollBarVisibility.Auto);
             ScrollViewer.SetHorizontalScrollBarVisibility(contentBox,ScrollBarVisibility.Disabled);
             Border cc=new Border{CornerRadius=new CornerRadius(8),
-                Background=new SolidColorBrush(Color.FromArgb(25,255,255,255)),Padding=new Thickness(8,6,8,6)};
+                Background=new SolidColorBrush(Color.FromArgb(20,0,0,0)),Padding=new Thickness(4,2,4,2)};
             cc.Child=contentBox; Grid.SetRow(cc,2); g.Children.Add(cc);
             // Footer removed per user request
             root.Child=g; this.Content=root;
