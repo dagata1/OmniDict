@@ -947,7 +947,7 @@ namespace GameDictApp {
                     previewBorder.Visibility=Visibility.Visible;
                 }catch{previewBorder.Visibility=Visibility.Collapsed;}
             }else{previewBorder.Visibility=Visibility.Collapsed;}
-            SetRichText("\u231b \u6b63\u5728\u8bc6\u522b\u56fe\u50cf\u5e76\u7ed3\u5408\u6e38\u620f\u8bed\u5883\u6df1\u5ea6\u89e3\u6790\u4e2d...");
+            SetRichText("\u231b \u6b63\u5728\u8bc6\u522b\u4e2d...");
             this.Show(); this.Activate();
         }
         public void ShowResult(string text){SetRichText(text);}
