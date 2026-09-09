@@ -15,8 +15,14 @@ using System.Runtime.InteropServices;
 
 namespace GameDictApp {
     public class Program {
+        private static System.Threading.Mutex appMutex;
         [STAThread]
         public static void Main(string[] args) {
+            bool createdNew;
+            appMutex = new System.Threading.Mutex(true, "GameDictAI_SingleInstance_Mutex", out createdNew);
+            if (!createdNew) {
+                return;
+            }
             string _lp=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","gamedict.log");
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_lp));
             try{using(var _fs2=new System.IO.FileStream(_lp,System.IO.FileMode.Append,System.IO.FileAccess.Write,System.IO.FileShare.ReadWrite))
