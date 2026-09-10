@@ -596,14 +596,23 @@ namespace GameDictApp {
     }
 
     public class HistoryDetailWindow : Window {
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd,int attr,ref int attrValue,int attrSize);
+        private void ApplyDarkTitleBar(){
+            try{
+                var hwnd=new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                int dark=1;
+                DwmSetWindowAttribute(hwnd,20,ref dark,sizeof(int));
+            }catch{}
+        }
         public HistoryDetailWindow(HistoryEntry entry) {
             this.Title="GameDict - \u8be6\u60c5"; this.Width=520; this.Height=520;
             this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
             this.Background=new SolidColorBrush(Color.FromRgb(8,8,8));
+            this.SourceInitialized+=(s,e)=>ApplyDarkTitleBar();
             Grid g=new Grid{Margin=new Thickness(16)};
             g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
             StackPanel hi=new StackPanel{Orientation=Orientation.Horizontal};
             Border sb2=new Border{CornerRadius=new CornerRadius(3),
@@ -616,11 +625,6 @@ namespace GameDictApp {
                 FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(220,220,232)),
                 VerticalAlignment=VerticalAlignment.Center});
             DockPanel.SetDock(hi,Dock.Left); h.Children.Add(hi);
-            Button cb=new Button{Content="\u2715",Width=26,Height=26,Background=Brushes.Transparent,
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,
-                Foreground=new SolidColorBrush(Color.FromRgb(110,110,125)),FontWeight=FontWeights.Bold};
-            cb.Click+=(s,e)=>this.Close();
-            DockPanel.SetDock(cb,Dock.Right); h.Children.Add(cb);
             Grid.SetRow(h,0); g.Children.Add(h);
             // Image preview
             if(!string.IsNullOrEmpty(entry.ImagePath)&&File.Exists(entry.ImagePath)){
@@ -648,13 +652,6 @@ namespace GameDictApp {
                 BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
                 BorderThickness=new Thickness(1),Padding=new Thickness(14)};
             cb3.Child=sv; Grid.SetRow(cb3,g.RowDefinitions.Count-2); g.Children.Add(cb3);
-            Button copyBtn=new Button{Content="\u590d\u5236\u5185\u5bb9",Height=30,Padding=new Thickness(16,0,16,0),
-                Background=new SolidColorBrush(Color.FromRgb(20,20,20)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(1),Foreground=new SolidColorBrush(Color.FromRgb(180,180,195)),
-                Cursor=Cursors.Hand,Margin=new Thickness(0,10,0,0),HorizontalAlignment=HorizontalAlignment.Left};
-            copyBtn.Click+=(s,e)=>{try{Clipboard.SetText(entry.Result);copyBtn.Content="\u5df2\u590d\u5236";}catch{}};
-            Grid.SetRow(copyBtn,2); g.Children.Add(copyBtn);
             this.Content=g;
             this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Close();};
         }
