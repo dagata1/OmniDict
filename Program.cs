@@ -725,62 +725,110 @@ namespace GameDictApp {
     }
 
     public class SettingsDialog : Window {
-        private TextBox TB,TK,CMBTEXT; private System.Windows.Controls.Primitives.Popup CMBPOPUP; private ListBox CMBLB; private MainWindow M;
+        private TextBox TB,TK,CMBTEXT;
+        private System.Windows.Controls.Primitives.Popup CMBPOPUP;
+        private ListBox CMBLB;
+        private MainWindow M;
+
         public SettingsDialog(MainWindow main) {
-            M=main; this.Title="设置"; this.Width=440; this.Height=380;
+            M=main;
+            this.Title="设置";
+            this.Width=560;
+            this.Height=520;
+            this.MinWidth=480;
+            this.MinHeight=440;
             this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
             this.Background=new SolidColorBrush(Win11Theme.BgWindow);
             this.SourceInitialized+=(s,e)=>Win11Theme.ApplyToWindow(this);
 
-            StackPanel sp=new StackPanel{Margin=new Thickness(20)};
-            DockPanel hd=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
-            hd.Children.Add(new TextBlock{Text="设置",FontSize=16,FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary)});
-            sp.Children.Add(hd);
-            sp.Children.Add(new TextBlock{Text="配置文件: "+GameDictConfig.ConfigPath,FontSize=10,
-                Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
-                Margin=new Thickness(0,0,0,12),TextWrapping=TextWrapping.Wrap});
-            sp.Children.Add(Lbl("API 地址")); TB=Inp(M.apiBase); sp.Children.Add(TB);
-            sp.Children.Add(Lbl("API 密钥")); TK=Inp(M.apiKey);  sp.Children.Add(TK);
+            Grid rootGrid=new Grid();
+            rootGrid.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
+            rootGrid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto}); // bottom action bar
 
-            // Model row: custom TextBox + Popup + ListBox
-            sp.Children.Add(Lbl("模型"));
-            DockPanel modelRow=new DockPanel{LastChildFill=true,Margin=new Thickness(0,0,0,10)};
-            Button fetchBtn=new Button{Content="获取",Width=54,Height=28,Cursor=Cursors.Hand,
-                Margin=new Thickness(6,0,0,0)};
+            // Main scrollable content
+            ScrollViewer sv=new ScrollViewer{
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+
+            StackPanel sp=new StackPanel{Margin=new Thickness(24,20,24,16)};
+
+            // Header (Win11 Settings style)
+            TextBlock pageTitle=new TextBlock{
+                Text="系统设置",
+                FontSize=20,
+                FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                FontFamily=new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei"),
+                Margin=new Thickness(0,0,0,4)};
+            sp.Children.Add(pageTitle);
+
+            TextBlock cfgPath=new TextBlock{
+                Text="配置文件路径: " + GameDictConfig.ConfigPath,
+                FontSize=11,
+                Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Margin=new Thickness(0,0,0,16),
+                TextWrapping=TextWrapping.Wrap};
+            sp.Children.Add(cfgPath);
+
+            // Group 1: 接口服务配置 (SettingsExpander/Card style)
+            sp.Children.Add(CreateSectionHeader("模型与接口"));
+
+            StackPanel card1=new StackPanel();
+
+            // API 地址 Row
+            TB=CreateWin11Input(M.apiBase, 260);
+            card1.Children.Add(CreateSettingsRow("API 端点地址", "OpenAI 兼容的推理服务地址", TB));
+            card1.Children.Add(CreateRowDivider());
+
+            // API 密钥 Row
+            TK=CreateWin11Input(M.apiKey, 260);
+            card1.Children.Add(CreateSettingsRow("API 密钥 (Bearer Token)", "用于请求鉴权的 API Key", TK));
+            card1.Children.Add(CreateRowDivider());
+
+            // 模型 Row
+            DockPanel modelRowWidget=new DockPanel{LastChildFill=true};
+            Button fetchBtn=new Button{Content="拉取列表",Width=72,Height=30,Cursor=Cursors.Hand,Margin=new Thickness(6,0,0,0)};
             fetchBtn.Style=Win11Theme.CreateButtonStyle(false);
-            DockPanel.SetDock(fetchBtn,Dock.Right); modelRow.Children.Add(fetchBtn);
-            Grid cmbGrid=new Grid{Height=28};
+            DockPanel.SetDock(fetchBtn,Dock.Right);
+            modelRowWidget.Children.Add(fetchBtn);
+
+            Grid cmbGrid=new Grid{Height=30,Width=180};
             cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
             cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-            CMBTEXT=new TextBox{
-                Background=new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness=new Thickness(1,1,0,1),
-                VerticalContentAlignment=VerticalAlignment.Center,
-                Padding=new Thickness(8,0,4,0),Text=M.currentModel};
-            Grid.SetColumn(CMBTEXT,0); cmbGrid.Children.Add(CMBTEXT);
-            Button arrowBtn=new Button{Content="▾",Width=24,
+
+            CMBTEXT=CreateWin11Input(M.currentModel, 0);
+            CMBTEXT.BorderThickness=new Thickness(1,1,0,1);
+            CMBTEXT.Height=30;
+            Grid.SetColumn(CMBTEXT,0);
+            cmbGrid.Children.Add(CMBTEXT);
+
+            Button arrowBtn=new Button{
+                Content="▾",Width=26,Height=30,
                 Background=new SolidColorBrush(Win11Theme.BgSurface),
                 Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness=new Thickness(0,1,1,1),Cursor=Cursors.Hand};
-            Grid.SetColumn(arrowBtn,1); cmbGrid.Children.Add(arrowBtn);
-            modelRow.Children.Add(cmbGrid);
-            sp.Children.Add(modelRow);
+                BorderThickness=new Thickness(0,1,1,1),
+                Cursor=Cursors.Hand};
+            Grid.SetColumn(arrowBtn,1);
+            cmbGrid.Children.Add(arrowBtn);
 
+            modelRowWidget.Children.Add(cmbGrid);
+
+            card1.Children.Add(CreateSettingsRow("当前推理模型", "可直接输入名称或从服务器列表选取", modelRowWidget));
+            sp.Children.Add(WrapInCard(card1));
+
+            // Setup model dropdown popup
             CMBLB=new ListBox{
                 Background=new SolidColorBrush(Win11Theme.BgSurface),
                 Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
-                BorderThickness=new Thickness(1),MaxHeight=200};
+                BorderThickness=new Thickness(1),MaxHeight=220};
             ScrollViewer.SetVerticalScrollBarVisibility(CMBLB,ScrollBarVisibility.Auto);
             var lbItemStyle=new Style(typeof(ListBoxItem));
             lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Win11Theme.BgSurface)));
             lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty,new SolidColorBrush(Win11Theme.FgPrimary)));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty,new Thickness(10,5,10,5)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty,new Thickness(10,6,10,6)));
             var lbHover=new Trigger{Property=ListBoxItem.IsMouseOverProperty,Value=true};
             lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Win11Theme.BgHover)));
             lbItemStyle.Triggers.Add(lbHover);
@@ -836,7 +884,7 @@ namespace GameDictApp {
                         }
                     }catch(Exception ex){Logger.Error("FetchModels",ex);}
                     this.Dispatcher.Invoke(()=>{
-                        fetchBtn.Content="获取"; fetchBtn.IsEnabled=true;
+                        fetchBtn.Content="拉取列表"; fetchBtn.IsEnabled=true;
                         if(ids.Count>0){
                             string cur=CMBTEXT.Text;
                             CMBLB.Items.Clear();
@@ -849,55 +897,167 @@ namespace GameDictApp {
                 });
             };
 
-            // Vision toggle
-            DockPanel vtRow=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
-            CheckBox visionChk=new CheckBox{
-                Content="图像模式（直接传图）",IsChecked=M.useVision,
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                VerticalContentAlignment=VerticalAlignment.Center};
-            TextBlock visionHint=new TextBlock{
-                Text="取消勾选则先 OCR 再传文字，适合纯文本模型",
-                FontSize=10,Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
-                Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
-            DockPanel.SetDock(visionChk,Dock.Left); vtRow.Children.Add(visionChk);
-            vtRow.Children.Add(visionHint);
-            sp.Children.Add(vtRow);
+            // Group 2: 解析与识别模式
+            sp.Children.Add(CreateSectionHeader("图像识别与输入模式"));
 
-            // Actions
-            StackPanel btns=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};
-            Button save=new Button{Content="保存",Width=72,Height=30,Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
+            StackPanel card2=new StackPanel();
+            CheckBox visionChk=new CheckBox{
+                Content="开启原生 Vision 图像输入",
+                IsChecked=M.useVision,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                VerticalContentAlignment=VerticalAlignment.Center,
+                Cursor=Cursors.Hand};
+            card2.Children.Add(CreateSettingsRow(
+                "图像识别模式 (Multimodal Vision)",
+                "直接上传截图供多模态模型深度识别。取消则优先调用本地 Windows OCR 离线提取文字（适用于纯文本大模型）",
+                visionChk));
+            sp.Children.Add(WrapInCard(card2));
+
+            // Group 3: 全局快捷键与操作
+            sp.Children.Add(CreateSectionHeader("快捷操作指南"));
+
+            StackPanel card3=new StackPanel();
+            TextBlock hk1=new TextBlock{
+                Text="Alt + Q",
+                FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Win11Theme.Accent),
+                VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Consolas, Segoe UI")};
+            card3.Children.Add(CreateSettingsRow("截图查词释义", "在任意游戏或应用中唤醒快速区域框选", hk1));
+            card3.Children.Add(CreateRowDivider());
+
+            TextBlock hk2=new TextBlock{
+                Text="Alt + W",
+                FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Win11Theme.Accent),
+                VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Consolas, Segoe UI")};
+            card3.Children.Add(CreateSettingsRow("全局关闭释义浮窗", "不抢占游戏焦点，随心瞬间关闭浮窗", hk2));
+            sp.Children.Add(WrapInCard(card3));
+
+            sv.Content=sp;
+            Grid.SetRow(sv,0);
+            rootGrid.Children.Add(sv);
+
+            // Bottom Action Bar (Win11 standard dialog footer)
+            Border bottomBar=new Border{
+                Background=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(28,28,28) : Color.FromRgb(240,240,240)),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(0,1,0,0),
+                Padding=new Thickness(24,12,24,12)};
+
+            StackPanel btns=new StackPanel{
+                Orientation=Orientation.Horizontal,
+                HorizontalAlignment=HorizontalAlignment.Right};
+
+            Button save=new Button{Content="保存设置",Width=88,Height=32,Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
             save.Style=Win11Theme.CreateButtonStyle(true);
             save.Click+=(s,e)=>{
-                M.apiBase=TB.Text.Trim();M.apiKey=TK.Text.Trim();M.currentModel=CMBTEXT.Text.Trim();M.useVision=visionChk.IsChecked==true;
-                double sx=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastX:-1;double sy=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastY:-1;
+                M.apiBase=TB.Text.Trim();
+                M.apiKey=TK.Text.Trim();
+                M.currentModel=CMBTEXT.Text.Trim();
+                M.useVision=visionChk.IsChecked==true;
+                double sx=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastX:-1;
+                double sy=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastY:-1;
                 GameDictConfig.Save(M.apiBase,M.apiKey,M.currentModel,M.useVision,sx,sy);
                 M.ApplyTheme();
                 this.Close();
             };
 
-            Button cancel=new Button{Content="取消",Width=64,Height=30,Cursor=Cursors.Hand};
+            Button cancel=new Button{Content="取消",Width=72,Height=32,Cursor=Cursors.Hand};
             cancel.Style=Win11Theme.CreateButtonStyle(false);
             cancel.Click+=(s,e)=>this.Close();
-            btns.Children.Add(save); btns.Children.Add(cancel); sp.Children.Add(btns);
 
-            var sv=new System.Windows.Controls.ScrollViewer{VerticalScrollBarVisibility=System.Windows.Controls.ScrollBarVisibility.Auto,Content=sp};
-            this.Content=sv;
+            btns.Children.Add(save);
+            btns.Children.Add(cancel);
+            bottomBar.Child=btns;
+
+            Grid.SetRow(bottomBar,1);
+            rootGrid.Children.Add(bottomBar);
+
+            this.Content=rootGrid;
         }
 
-        private TextBlock Lbl(string t) {
-            return new TextBlock{Text=t,FontSize=11,Margin=new Thickness(0,0,0,4),
-                Foreground=new SolidColorBrush(Win11Theme.FgSecondary)};
+        private TextBlock CreateSectionHeader(string text) {
+            return new TextBlock{
+                Text=text,
+                FontSize=13,
+                FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Margin=new Thickness(2,12,0,6)};
         }
-        private TextBox Inp(string v) {
-            return new TextBox{Text=v,Height=28,Margin=new Thickness(0,0,0,10),
-                VerticalContentAlignment=VerticalAlignment.Center,Padding=new Thickness(8,0,8,0),
+
+        private Border WrapInCard(UIElement content) {
+            return new Border{
+                CornerRadius=new CornerRadius(8),
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1),
+                Padding=new Thickness(16,8,16,8),
+                Margin=new Thickness(0,0,0,6)};
+        }
+
+        private Grid CreateSettingsRow(string header, string description, UIElement actionWidget) {
+            Grid row=new Grid{Margin=new Thickness(0,8,0,8)};
+            row.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+            row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+
+            StackPanel textPanel=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)};
+            TextBlock h=new TextBlock{
+                Text=header,
+                FontSize=13,
+                FontWeight=FontWeights.Normal,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            textPanel.Children.Add(h);
+
+            if(!string.IsNullOrEmpty(description)){
+                TextBlock desc=new TextBlock{
+                    Text=description,
+                    FontSize=11.5,
+                    Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
+                    FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                    Margin=new Thickness(0,2,0,0),
+                    TextWrapping=TextWrapping.Wrap};
+                textPanel.Children.Add(desc);
+            }
+
+            Grid.SetColumn(textPanel,0);
+            row.Children.Add(textPanel);
+
+            if(actionWidget!=null){
+                Grid.SetColumn(actionWidget,1);
+                row.Children.Add(actionWidget);
+            }
+
+            return row;
+        }
+
+        private Border CreateRowDivider() {
+            return new Border{
+                Height=1,
+                Background=new SolidColorBrush(Win11Theme.BorderSubtle),
+                Margin=new Thickness(0,4,0,4)};
+        }
+
+        private TextBox CreateWin11Input(string text, double width = 0) {
+            var tb = new TextBox{
+                Text=text,
+                Height=30,
+                VerticalContentAlignment=VerticalAlignment.Center,
+                Padding=new Thickness(10,0,10,0),
                 Background=new SolidColorBrush(Win11Theme.BgSurface),
                 Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
                 CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),BorderThickness=new Thickness(1)};
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                FontSize=12};
+            if(width > 0) tb.Width = width;
+            return tb;
         }
     }
-
     public class FloatingResultWindow : Window {
         private RichTextBox contentBox;
         private System.Windows.Controls.Image previewImg;
