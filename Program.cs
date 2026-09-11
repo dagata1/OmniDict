@@ -17,17 +17,17 @@ using System.Windows.Threading;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
-namespace GameDictApp {
+namespace OmniDictApp {
     public class Program {
         private static System.Threading.Mutex appMutex;
         [STAThread]
         public static void Main(string[] args) {
             bool createdNew;
-            appMutex = new System.Threading.Mutex(true, "GameDictAI_SingleInstance_Mutex", out createdNew);
+            appMutex = new System.Threading.Mutex(true, "OmniDictAI_SingleInstance_Mutex", out createdNew);
             if (!createdNew) {
                 return;
             }
-            string _lp=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","gamedict.log");
+            string _lp=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"OmniDict","omnidict.log");
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_lp));
             try{using(var _fs2=new System.IO.FileStream(_lp,System.IO.FileMode.Append,System.IO.FileAccess.Write,System.IO.FileShare.ReadWrite))
                 using(var _sw2=new System.IO.StreamWriter(_fs2,System.Text.Encoding.UTF8))
@@ -78,7 +78,7 @@ namespace GameDictApp {
                     }
                 }
             } catch {}
-            IsDarkTheme = true; // default dark
+            IsDarkTheme = true;
         }
 
         public static void ApplyToWindow(Window window) {
@@ -92,7 +92,6 @@ namespace GameDictApp {
             } catch {}
         }
 
-        // Color palettes (C# 5 compatible getters)
         public static Color BgWindow { get { return IsDarkTheme ? Color.FromRgb(20, 20, 20) : Color.FromRgb(243, 243, 243); } }
         public static Color BgSurface { get { return IsDarkTheme ? Color.FromRgb(32, 32, 32) : Color.FromRgb(255, 255, 255); } }
         public static Color BgCard { get { return IsDarkTheme ? Color.FromRgb(40, 40, 40) : Color.FromRgb(255, 255, 255); } }
@@ -146,63 +145,170 @@ namespace GameDictApp {
         }
     }
 
-    // Standalone config: %APPDATA%\GameDict\gamedict.toml
-    public static class GameDictConfig {
-        public static readonly string ConfigPath=System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","gamedict.toml");
-        public static bool Load(out string apiBase,out string apiKey,out string model,out string useVision,out double floatX,out double floatY){
-            apiBase=null;apiKey=null;model=null;useVision=null;floatX=-1;floatY=-1;
-            try{
-                if(!File.Exists(ConfigPath))return false;
-                foreach(string line in File.ReadAllLines(ConfigPath)){
-                    string t=line.Trim(); int q1,q2;
-                    if(t.StartsWith("api_base")){q1=t.IndexOf('"');q2=t.LastIndexOf('"');if(q1>=0&&q2>q1)apiBase=t.Substring(q1+1,q2-q1-1);}
-                    if(t.StartsWith("api_key")){q1=t.IndexOf('"');q2=t.LastIndexOf('"');if(q1>=0&&q2>q1)apiKey=t.Substring(q1+1,q2-q1-1);}
-                    if(t.StartsWith("model")){q1=t.IndexOf('"');q2=t.LastIndexOf('"');if(q1>=0&&q2>q1)model=t.Substring(q1+1,q2-q1-1);}
-                    if(t.StartsWith("use_vision")){useVision=t.Contains("true")?"true":null;}
-                    if(t.StartsWith("float_x=")||t.StartsWith("float_x ")){double.TryParse(t.Split('=')[1].Trim(),out floatX);}
-                    if(t.StartsWith("float_y=")||t.StartsWith("float_y ")){double.TryParse(t.Split('=')[1].Trim(),out floatY);}
+    public class PromptPreset {
+        public string Name { get; set; }
+        public string Content { get; set; }
+        public PromptPreset(string name, string content) {
+            Name = name;
+            Content = content;
+        }
+    }
+
+    public static class OmniDictConfig {
+        public static readonly string AppDataDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniDict");
+        public static readonly string ConfigPath = System.IO.Path.Combine(AppDataDir, "omnidict.toml");
+
+        // Old path for migration
+        private static readonly string OldConfigPath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameDict", "gamedict.toml");
+
+        public static List<PromptPreset> GetDefaultPresets() {
+            var list = new List<PromptPreset>();
+            list.Add(new PromptPreset("游戏本地化与攻略私教",
+                "你是一位顶尖的多语言游戏本地化与攻略私教。请识别并精析截图中出现的内容（支持英语、日语、韩语、德语等全语种）：\n" +
+                "【中文意思】：结合当前游戏具体画面与语境，给出精准自然、地道的中文翻译；\n" +
+                "【核心重点】：提炼关键单词/生词/短语，标出读音/原形与在此处游戏场景下的含义及搭配；\n" +
+                "【游戏大师】：结合星露谷物语等游戏情境，给出1~2条关键背景提示、任务推进要点或下步建议；\n" +
+                "【顺便学一句】：提取一个最地道、最值得掌握的游戏用语或日常例句。\n" +
+                "排版要求紧凑干练，层次分明，无需多余套话。"));
+
+            list.Add(new PromptPreset("极简极速直译",
+                "你是一位极高效率的即时翻译助手。请直接识别并翻译截图中的文字：\n" +
+                "1. 提供最自然精准的中文译文；\n" +
+                "2. 若有关键专业生词，简明列出【单词 - 中文 - 音标】。\n" +
+                "输出力求极致精炼，直奔主题。"));
+
+            list.Add(new PromptPreset("程序员技术排错与代码分析",
+                "你是一位资深架构师与软件排错专家。请识别截图中出现的代码、错误日志或命令行信息：\n" +
+                "【错误根因】：一针见血指明核心原因；\n" +
+                "【解决方案】：给出清晰的代码修改或命令修复方案；\n" +
+                "【要点解析】：拆解其中涉及的关键技术名词或语法要点。"));
+
+            list.Add(new PromptPreset("外语学习与深度语法精读",
+                "你是一位资深外语导师。请针对截图中的语句进行深度语言学精读：\n" +
+                "【全文翻译】：提供通顺自然译文；\n" +
+                "【词汇详解】：音标、原形、词性、派生词及易混辨析；\n" +
+                "【语法长难句】：剖析句子结构、核心时态与从句逻辑；\n" +
+                "【例句拓展】：提供地道场景例句。"));
+
+            return list;
+        }
+
+        public static bool Load(out string apiBase, out string apiKey, out string model, out string useVision,
+                               out double floatX, out double floatY, out string currentPresetName, out List<PromptPreset> presets) {
+            apiBase = null; apiKey = null; model = null; useVision = null;
+            floatX = -1; floatY = -1; currentPresetName = null;
+            presets = new List<PromptPreset>();
+
+            string loadPath = ConfigPath;
+            if (!File.Exists(loadPath) && File.Exists(OldConfigPath)) {
+                loadPath = OldConfigPath;
+            }
+
+            try {
+                if (!File.Exists(loadPath)) return false;
+                string currentPName = null;
+                var currentPContent = new StringBuilder();
+                bool readingPreset = false;
+
+                foreach (string line in File.ReadAllLines(loadPath, Encoding.UTF8)) {
+                    string t = line.Trim(); int q1, q2;
+                    if (t.StartsWith("api_base")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) apiBase = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    else if (t.StartsWith("api_key")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) apiKey = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    else if (t.StartsWith("model")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) model = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    else if (t.StartsWith("use_vision")) { useVision = t.Contains("true") ? "true" : null; }
+                    else if (t.StartsWith("current_preset")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) currentPresetName = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    else if (t.StartsWith("float_x=") || t.StartsWith("float_x ")) { double.TryParse(t.Split('=')[1].Trim(), out floatX); }
+                    else if (t.StartsWith("float_y=") || t.StartsWith("float_y ")) { double.TryParse(t.Split('=')[1].Trim(), out floatY); }
+                    else if (t.StartsWith("[[presets]]")) {
+                        if (readingPreset && !string.IsNullOrEmpty(currentPName)) {
+                            presets.Add(new PromptPreset(currentPName, currentPContent.ToString().TrimEnd()));
+                        }
+                        readingPreset = true;
+                        currentPName = null;
+                        currentPContent.Clear();
+                    } else if (readingPreset) {
+                        if (t.StartsWith("name")) {
+                            q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"');
+                            if (q1 >= 0 && q2 > q1) currentPName = t.Substring(q1 + 1, q2 - q1 - 1);
+                        } else if (t.StartsWith("content")) {
+                            q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"');
+                            if (q1 >= 0 && q2 > q1) {
+                                string c = t.Substring(q1 + 1, q2 - q1 - 1).Replace("\\n", "\n").Replace("\\\"", "\"").Replace("\\\\", "\\");
+                                currentPContent.Append(c);
+                            }
+                        }
+                    }
+                }
+                if (readingPreset && !string.IsNullOrEmpty(currentPName)) {
+                    presets.Add(new PromptPreset(currentPName, currentPContent.ToString().TrimEnd()));
+                }
+
+                if (presets.Count == 0) {
+                    presets = GetDefaultPresets();
+                }
+                if (string.IsNullOrEmpty(currentPresetName) && presets.Count > 0) {
+                    currentPresetName = presets[0].Name;
                 }
                 return true;
-            }catch(Exception ex){Logger.Error("GameDictConfig.Load",ex);return false;}
+            } catch (Exception ex) {
+                Logger.Error("OmniDictConfig.Load", ex);
+                return false;
+            }
         }
-        public static void Save(string apiBase,string apiKey,string model,bool useVision=true,double floatX=-1,double floatY=-1){
-            try{
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(ConfigPath));
-                var sb=new System.Text.StringBuilder();
-                sb.AppendLine("# GameDict AI configuration");
-                sb.AppendLine("# Generated by GameDict AI - do not edit while app is running");
+
+        public static void Save(string apiBase, string apiKey, string model, bool useVision,
+                                double floatX, double floatY, string currentPresetName, List<PromptPreset> presets) {
+            try {
+                Directory.CreateDirectory(AppDataDir);
+                var sb = new StringBuilder();
+                sb.AppendLine("# OmniDict AI configuration");
+                sb.AppendLine("# Generated by OmniDict AI - do not edit while app is running");
                 sb.AppendLine();
-                sb.AppendLine("api_base   = \""+apiBase+"\"");
-                sb.AppendLine("api_key    = \""+apiKey+"\"");
-                sb.AppendLine("model      = \""+model+"\"");
-                sb.AppendLine("use_vision = "+(useVision?"true":"false"));
-                if(floatX>=0&&floatY>=0){
-                    sb.AppendLine("float_x    = "+((int)floatX));
-                    sb.AppendLine("float_y    = "+((int)floatY));
+                sb.AppendLine("api_base       = \"" + (apiBase ?? "") + "\"");
+                sb.AppendLine("api_key        = \"" + (apiKey ?? "") + "\"");
+                sb.AppendLine("model          = \"" + (model ?? "") + "\"");
+                sb.AppendLine("use_vision     = " + (useVision ? "true" : "false"));
+                sb.AppendLine("current_preset = \"" + (currentPresetName ?? "") + "\"");
+                if (floatX >= 0 && floatY >= 0) {
+                    sb.AppendLine("float_x        = " + ((int)floatX));
+                    sb.AppendLine("float_y        = " + ((int)floatY));
                 }
-                File.WriteAllText(ConfigPath,sb.ToString(),System.Text.Encoding.UTF8);
-                Logger.Info("Config saved to "+ConfigPath);
-            }catch(Exception ex){Logger.Error("GameDictConfig.Save",ex);}
+                sb.AppendLine();
+                if (presets != null) {
+                    foreach (var p in presets) {
+                        sb.AppendLine("[[presets]]");
+                        sb.AppendLine("name    = \"" + (p.Name ?? "").Replace("\"", "\\\"") + "\"");
+                        string esc = (p.Content ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r\n", "\\n").Replace("\n", "\\n");
+                        sb.AppendLine("content = \"" + esc + "\"");
+                        sb.AppendLine();
+                    }
+                }
+                File.WriteAllText(ConfigPath, sb.ToString(), Encoding.UTF8);
+                Logger.Info("Config saved to " + ConfigPath);
+            } catch (Exception ex) {
+                Logger.Error("OmniDictConfig.Save", ex);
+            }
         }
-        public static void SavePosition(double x,double y){
-            try{
-                if(!File.Exists(ConfigPath))return;
-                var list=new System.Collections.Generic.List<string>(File.ReadAllLines(ConfigPath));
-                list.RemoveAll(l=>l.Trim().StartsWith("float_x")||l.Trim().StartsWith("float_y"));
-                list.Add("float_x    = "+((int)x));
-                list.Add("float_y    = "+((int)y));
-                File.WriteAllLines(ConfigPath,list.ToArray(),System.Text.Encoding.UTF8);
-            }catch{}
+
+        public static void SavePosition(double x, double y) {
+            try {
+                if (!File.Exists(ConfigPath)) return;
+                var list = new List<string>(File.ReadAllLines(ConfigPath, Encoding.UTF8));
+                list.RemoveAll(l => l.Trim().StartsWith("float_x") || l.Trim().StartsWith("float_y"));
+                list.Add("float_x        = " + ((int)x));
+                list.Add("float_y        = " + ((int)y));
+                File.WriteAllLines(ConfigPath, list.ToArray(), Encoding.UTF8);
+            } catch {}
         }
     }
 
     public class MainWindow : Window {
-        private const int  HOTKEY_ID_CTRL_T = 9001;
         private const int  HOTKEY_ID_ALT_Q  = 9002;
         private const int  HOTKEY_ID_ALT_W  = 9003;
-        private const uint MOD_ALT=0x0001,MOD_CONTROL=0x0002,MOD_NOREPEAT=0x4000;
-        private const uint VK_T=0x54,VK_Q=0x51,VK_W=0x57;
+        private const uint MOD_ALT=0x0001,MOD_NOREPEAT=0x4000;
+        private const uint VK_Q=0x51,VK_W=0x57;
         private const int  WM_HOTKEY=0x0312;
         [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd,int id,uint fsModifiers,uint vk);
         [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd,int id);
@@ -219,20 +325,22 @@ namespace GameDictApp {
         public string currentModel="gemini-3.8-flash-high";
         public string apiKey="";
         public string apiBase="https://ai.kncloud.top/v1/chat/completions";
-        public bool   useVision=true; // false = OCR + text-only model
+        public bool   useVision=true;
+        public string currentPresetName="游戏本地化与攻略私教";
+        public List<PromptPreset> promptPresets=new List<PromptPreset>();
+
         public MainWindow() {
             try{byte[] _ib=Convert.FromBase64String(EmbeddedIcon.IcoB64);var _ms=new System.IO.MemoryStream(_ib);var _dec=new System.Windows.Media.Imaging.IconBitmapDecoder(_ms,System.Windows.Media.Imaging.BitmapCreateOptions.None,System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);if(_dec.Frames.Count>0){var _fr=_dec.Frames[0];_fr.Freeze();this.Icon=_fr;}}catch(Exception _ex){Logger.Error("WindowIcon",_ex);}
-            LoadCodexConfig(); Logger.Info("Config model="+currentModel);
+            LoadOmniConfig(); Logger.Info("Config model="+currentModel+" preset="+currentPresetName);
             InitUI(); InitTray();
             floatingWin=new FloatingResultWindow();
-            string _b,_k,_m,_v; double _fx,_fy;
-            if(GameDictConfig.Load(out _b,out _k,out _m,out _v,out _fx,out _fy)){
+            string _b,_k,_m,_v,_pn; double _fx,_fy; List<PromptPreset> _ps;
+            if(OmniDictConfig.Load(out _b,out _k,out _m,out _v,out _fx,out _fy,out _pn,out _ps)){
                 if(_fx>=0&&_fy>=0){floatingWin.LastX=_fx;floatingWin.LastY=_fy;floatingWin.HasCustomPosition=true;}
             }
             this.Loaded+=MainWindow_Loaded; this.Hide(); this.Closing+=MainWindow_Closing;
             Win11Theme.ThemeChanged += () => this.Dispatcher.Invoke(ApplyTheme);
             
-            // Restore history
             var saved=HistoryStore.Load();
             for(int _i=saved.Count-1;_i>=0;_i--){var he=saved[_i];historyItems.Insert(0,he);RebuildHistoryItem(he);}
             if(historyItems.Count>0)this.Dispatcher.BeginInvoke(new System.Action(()=>{
@@ -240,17 +348,31 @@ namespace GameDictApp {
             }));
         }
 
-        public void LoadCodexConfig() {
-            string sb2,sk2,sm2,sv2; double fx,fy;
-            if(GameDictConfig.Load(out sb2,out sk2,out sm2,out sv2,out fx,out fy)){
+        public string GetActiveSystemPrompt() {
+            if (promptPresets != null) {
+                foreach (var p in promptPresets) {
+                    if (p.Name == currentPresetName) return p.Content;
+                }
+                if (promptPresets.Count > 0) return promptPresets[0].Content;
+            }
+            return "你是一位全能屏幕智能助手。请精准识别解析截图内容并给出专业中文回答。";
+        }
+
+        public void LoadOmniConfig() {
+            string sb2,sk2,sm2,sv2,spn; double fx,fy; List<PromptPreset> ps;
+            if(OmniDictConfig.Load(out sb2,out sk2,out sm2,out sv2,out fx,out fy,out spn,out ps)){
                 if(!string.IsNullOrEmpty(sb2))apiBase=sb2;
                 if(!string.IsNullOrEmpty(sk2))apiKey=sk2;
                 if(!string.IsNullOrEmpty(sm2))currentModel=sm2;
                 if(sv2!=null)useVision=sv2=="true";
+                if(!string.IsNullOrEmpty(spn))currentPresetName=spn;
+                if(ps!=null&&ps.Count>0)promptPresets=ps;
+                else promptPresets=OmniDictConfig.GetDefaultPresets();
                 if(floatingWin!=null&&fx>=0&&fy>=0){floatingWin.LastX=fx;floatingWin.LastY=fy;floatingWin.HasCustomPosition=true;}
-                Logger.Info("Loaded from "+GameDictConfig.ConfigPath);
+                Logger.Info("Loaded from "+OmniDictConfig.ConfigPath);
                 return;
             }
+            promptPresets = OmniDictConfig.GetDefaultPresets();
             try {
                 string cfgPath=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".codex","config.toml");
                 if(!File.Exists(cfgPath)) return;
@@ -261,18 +383,17 @@ namespace GameDictApp {
                     if(t.StartsWith("base_url")) { q1=t.IndexOf('"'); q2=t.LastIndexOf('"'); if(q1>0&&q2>q1) { string b=t.Substring(q1+1,q2-q1-1).TrimEnd('/'); if(!b.EndsWith("/v1")) b+="/v1"; apiBase=b+"/chat/completions"; } }
                 }
                 Logger.Info("Loaded from ~/.codex/config.toml");
-            } catch(Exception ex) { Logger.Error("LoadCodexConfig",ex); }
+            } catch(Exception ex) { Logger.Error("LoadOmniConfig",ex); }
         }
 
         private TextBlock titleText;
         private Border listContainer;
         private Button mainSetBtn;
         private Button mainClearBtn;
-
         private Button mainCloseBtn;
 
         private void InitUI() {
-            this.Title="GameDict AI"; this.Width=480; this.Height=560;
+            this.Title="OmniDict AI"; this.Width=480; this.Height=560;
             this.WindowStartupLocation=WindowStartupLocation.CenterScreen;
             this.WindowStyle=WindowStyle.None; this.AllowsTransparency=true;
             this.Background=Brushes.Transparent; this.Topmost=false;
@@ -293,10 +414,10 @@ namespace GameDictApp {
             StackPanel left=new StackPanel{Orientation=Orientation.Horizontal};
             Border badge=new Border{Width=24,Height=24,CornerRadius=new CornerRadius(6),
                 Background=new SolidColorBrush(Color.FromRgb(0,103,192)),Margin=new Thickness(0,0,8,0)};
-            badge.Child=new TextBlock{Text="G",Foreground=Brushes.White,FontWeight=FontWeights.Bold,
+            badge.Child=new TextBlock{Text="O",Foreground=Brushes.White,FontWeight=FontWeights.Bold,
                 HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,FontSize=12};
             left.Children.Add(badge);
-            titleText=new TextBlock{Text="GameDict AI",FontWeight=FontWeights.SemiBold,FontSize=14,
+            titleText=new TextBlock{Text="OmniDict AI",FontWeight=FontWeights.SemiBold,FontSize=14,
                 VerticalAlignment=VerticalAlignment.Center};
             left.Children.Add(titleText);
             DockPanel.SetDock(left,Dock.Left); header.Children.Add(left);
@@ -316,7 +437,7 @@ namespace GameDictApp {
 
             // Toolbar
             DockPanel toolbar=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
-            Button snipBtn=new Button{Content="截图查词 (Alt+Q)",Height=32,Padding=new Thickness(16,0,16,0),
+            Button snipBtn=new Button{Content="截图解析 (Alt+Q)",Height=32,Padding=new Thickness(16,0,16,0),
                 Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
             snipBtn.Style=Win11Theme.CreateButtonStyle(true);
             snipBtn.Click+=(s,e)=>TriggerSnipAndAnalyze();
@@ -347,7 +468,7 @@ namespace GameDictApp {
 
             // Footer
             DockPanel footer=new DockPanel{LastChildFill=false,Margin=new Thickness(0,8,0,0)};
-            statusText=new TextBlock{Text="模型: "+currentModel,FontSize=11};
+            statusText=new TextBlock{Text="预设: "+currentPresetName,FontSize=11};
             DockPanel.SetDock(statusText,Dock.Left); footer.Children.Add(statusText);
             Grid.SetRow(footer,3); g.Children.Add(footer);
 
@@ -371,7 +492,6 @@ namespace GameDictApp {
             
             statusText.Foreground = new SolidColorBrush(Win11Theme.FgTertiary);
 
-            // Refresh cards
             RefreshAllCards();
         }
 
@@ -386,12 +506,12 @@ namespace GameDictApp {
             trayIcon=new System.Windows.Forms.NotifyIcon();
             try{byte[] _tb=Convert.FromBase64String(EmbeddedIcon.IcoB64);using(var _tms=new System.IO.MemoryStream(_tb)){trayIcon.Icon=new System.Drawing.Icon(_tms);}}
             catch{trayIcon.Icon=System.Drawing.SystemIcons.Application;}
-            trayIcon.Text="GameDict AI"; trayIcon.Visible=true;
+            trayIcon.Text="OmniDict AI"; trayIcon.Visible=true;
             trayIcon.DoubleClick+=(s,e)=>{this.Show();this.Activate();};
             var menu=new System.Windows.Forms.ContextMenuStrip();
             var m1=new System.Windows.Forms.ToolStripMenuItem("历史记录");
             m1.Click+=(s,e)=>{this.Show();this.Activate();};
-            var m2=new System.Windows.Forms.ToolStripMenuItem("截图翻译 (Alt+Q)");
+            var m2=new System.Windows.Forms.ToolStripMenuItem("截图解析 (Alt+Q)");
             m2.Click+=(s,e)=>TriggerSnipAndAnalyze();
             var m3=new System.Windows.Forms.ToolStripMenuItem("设置");
             m3.Click+=(s,e)=>{this.Show();this.Activate();new SettingsDialog(this){Owner=this}.ShowDialog();};
@@ -473,18 +593,14 @@ namespace GameDictApp {
 
         private void AnalyzeImageForFloating(FloatingResultWindow fw,byte[] imgBytes) {
             bool vis=useVision;
+            string sysPmtRaw = GetActiveSystemPrompt();
+            string sysPmt = sysPmtRaw.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r\n","\\n").Replace("\n","\\n");
             Task.Run(()=>{
                 try{
-                    string sysPmt="你是一位顶尖的多语言游戏本地化与攻略私教。请识别并精析截图中出现的内容（支持英语、日语、韩语、德语等全语种）：\\n" +
-                        "【中文意思】：结合当前游戏具体画面与语境，给出精准自然、地道的中文翻译；\\n" +
-                        "【核心重点】：提炼关键单词/生词/短语，标出读音/原形与在此处游戏场景下的含义及搭配；\\n" +
-                        "【游戏大师】：结合星露谷物语等游戏情境，给出1~2条关键背景提示、任务推进要点或下步建议；\\n" +
-                        "【顺便学一句】：提取一个最地道、最值得掌握的游戏用语或日常例句。\\n" +
-                        "排版要求紧凑干练，层次分明，无需多余套话。";
                     string body;
                     if(vis){
                         string b64=Convert.ToBase64String(imgBytes);
-                        string up="请识别并深度解析截图中出现的文字内容，提供精准翻译与词汇语言拆解：";
+                        string up="请识别并深度解析截图中出现的文字与界面内容：";
                         body="{\"model\":\""+currentModel+"\",\"messages\":["+
                             "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
                             "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+up+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}}]}"+
@@ -494,7 +610,7 @@ namespace GameDictApp {
                         Logger.Info("OCR len="+ocrText.Length);
                         if(string.IsNullOrWhiteSpace(ocrText))ocrText="[OCR未识别到文字]";
                         string esc=ocrText.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\n","\\n").Replace("\r","");
-                        string up="截图中提取到的文字内容：\\n"+esc+"\\n\\n请分析其所属语种，提供地道中文翻译与核心词汇/语法教学拆解。";
+                        string up="截图中提取到的文字内容：\\n"+esc+"\\n\\n请分析并提供精准翻译与内容深度拆解。";
                         body="{\"model\":\""+currentModel+"\",\"messages\":["+
                             "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
                             "{\"role\":\"user\",\"content\":\""+up+"\"}]"+
@@ -502,7 +618,7 @@ namespace GameDictApp {
                     }
                     string result=PostAI(body);
                     Logger.Info("AI chars="+result.Length);
-                    byte[] _ib3=imgBytes;string _r3=result;this.Dispatcher.Invoke(()=>{fw.ShowResult(_r3);AddHistory("截图","[截图查词]",_r3,_ib3);});
+                    byte[] _ib3=imgBytes;string _r3=result;this.Dispatcher.Invoke(()=>{fw.ShowResult(_r3);AddHistory("截图","[屏幕解析]",_r3,_ib3);});
                 }catch(Exception ex){Logger.Error("AnalyzeFloating",ex);this.Dispatcher.Invoke(()=>fw.ShowResult("解析失败: "+ex.Message));}
             });
         }
@@ -538,9 +654,24 @@ namespace GameDictApp {
                 var sb=new StringBuilder();
                 for(int i=q1+1;i<json.Length;i++){
                     char c=json[i];
-                    if(c=='\\'&&i+1<json.Length){char n=json[i+1];
-                        if(n=='n'){sb.Append('\n');i++;}else if(n=='t'){sb.Append('\t');i++;}
-                        else if(n=='"'){sb.Append('"');i++;}else if(n=='\\'){sb.Append('\\');i++;}
+                    if(c=='\\' && i+1<json.Length){
+                        char n=json[i+1];
+                        if(n=='n'){sb.Append('\n');i++;}
+                        else if(n=='r'){sb.Append('\r');i++;}
+                        else if(n=='t'){sb.Append('\t');i++;}
+                        else if(n=='"'){sb.Append('"');i++;}
+                        else if(n=='\\'){sb.Append('\\');i++;}
+                        else if(n=='/'){sb.Append('/');i++;}
+                        else if(n=='u' && i+5<json.Length){
+                            string hex=json.Substring(i+2,4);
+                            int code;
+                            if(int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out code)){
+                                sb.Append((char)code);
+                                i += 5;
+                            } else {
+                                sb.Append(c);
+                            }
+                        }
                         else sb.Append(c);
                     }else if(c=='"') break; else sb.Append(c);
                 }
@@ -600,13 +731,12 @@ namespace GameDictApp {
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
                 BorderThickness=new Thickness(1),Padding=new Thickness(10,8,10,8),Margin=new Thickness(2,2,2,4)};
             Grid cg=new Grid();
-            cg.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto}); // thumb
+            cg.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
             cg.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
             cg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             cg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             cg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             
-            // thumbnail
             if(!string.IsNullOrEmpty(entry.ImagePath)&&File.Exists(entry.ImagePath)){
                 try{
                     var bmp=new System.Windows.Media.Imaging.BitmapImage();
@@ -624,7 +754,7 @@ namespace GameDictApp {
                     cg.Children.Add(imgBrd);
                 }catch{}
             }
-            // source badge + query
+
             StackPanel topRow=new StackPanel{Orientation=Orientation.Horizontal};
             Border srcB=new Border{CornerRadius=new CornerRadius(3),
                 Background=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(40,0,103,192) : Color.FromArgb(25,0,103,192)),
@@ -636,11 +766,11 @@ namespace GameDictApp {
                 Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
                 TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center});
             Grid.SetRow(topRow,0);Grid.SetColumn(topRow,1);cg.Children.Add(topRow);
-            // time
+
             TextBlock timeTb=new TextBlock{Text=entry.Time,FontSize=10,
                 Foreground=new SolidColorBrush(Win11Theme.FgTertiary),Margin=new Thickness(0,3,0,2)};
             Grid.SetRow(timeTb,1);Grid.SetColumn(timeTb,1);cg.Children.Add(timeTb);
-            // preview
+
             string preview=(entry.Result??"").Replace("\n"," ").Replace("\r","");
             if(preview.Length>60)preview=preview.Substring(0,60)+"...";
             TextBlock pTb=new TextBlock{Text=preview,FontSize=11,
@@ -655,7 +785,7 @@ namespace GameDictApp {
 
     public class HistoryDetailWindow : Window {
         public HistoryDetailWindow(HistoryEntry entry) {
-            this.Title="GameDict - 详情"; this.Width=520; this.Height=520;
+            this.Title="OmniDict - 详情"; this.Width=520; this.Height=520;
             this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
             this.Background=new SolidColorBrush(Win11Theme.BgWindow);
             this.SourceInitialized+=(s,e)=>Win11Theme.ApplyToWindow(this);
@@ -677,7 +807,6 @@ namespace GameDictApp {
             DockPanel.SetDock(hi,Dock.Left); h.Children.Add(hi);
             Grid.SetRow(h,0); g.Children.Add(h);
 
-            // Image preview
             if(!string.IsNullOrEmpty(entry.ImagePath)&&File.Exists(entry.ImagePath)){
                 try{
                     g.RowDefinitions.Insert(1,new RowDefinition{Height=GridLength.Auto});
@@ -708,310 +837,473 @@ namespace GameDictApp {
     }
 
     public class SettingsDialog : Window {
-        private TextBox TB,TK,CMBTEXT;
+        private TextBox TB, TK, CMBTEXT;
         private System.Windows.Controls.Primitives.Popup CMBPOPUP;
         private ListBox CMBLB;
+        private ComboBox presetCombo;
+        private TextBox promptBox;
         private MainWindow M;
+        private List<PromptPreset> localPresets = new List<PromptPreset>();
 
         public SettingsDialog(MainWindow main) {
-            M=main;
-            this.Title="设置";
-            this.Width=560;
-            this.Height=520;
-            this.MinWidth=480;
-            this.MinHeight=440;
-            this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
-            this.Background=new SolidColorBrush(Win11Theme.BgWindow);
-            this.SourceInitialized+=(s,e)=>Win11Theme.ApplyToWindow(this);
+            M = main;
+            this.Title = "设置";
+            this.Width = 620;
+            this.Height = 600;
+            this.MinWidth = 520;
+            this.MinHeight = 500;
+            this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            this.Background = new SolidColorBrush(Win11Theme.BgWindow);
+            this.SourceInitialized += (s, e) => Win11Theme.ApplyToWindow(this);
 
-            Grid rootGrid=new Grid();
-            rootGrid.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-            rootGrid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto}); // bottom action bar
+            if (M.promptPresets != null) {
+                foreach (var p in M.promptPresets) localPresets.Add(new PromptPreset(p.Name, p.Content));
+            }
+            if (localPresets.Count == 0) localPresets = OmniDictConfig.GetDefaultPresets();
 
-            // Main scrollable content
-            ScrollViewer sv=new ScrollViewer{
-                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+            Grid rootGrid = new Grid();
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            StackPanel sp=new StackPanel{Margin=new Thickness(24,20,24,16)};
+            ScrollViewer sv = new ScrollViewer {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
 
-            // Header (Win11 Settings style)
-            TextBlock pageTitle=new TextBlock{
-                Text="系统设置",
-                FontSize=20,
-                FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                FontFamily=new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei"),
-                Margin=new Thickness(0,0,0,4)};
+            StackPanel sp = new StackPanel { Margin = new Thickness(24, 20, 24, 16) };
+
+            TextBlock pageTitle = new TextBlock {
+                Text = "系统设置",
+                FontSize = 20,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei"),
+                Margin = new Thickness(0, 0, 0, 4) };
             sp.Children.Add(pageTitle);
 
-            TextBlock cfgPath=new TextBlock{
-                Text="配置文件路径: " + GameDictConfig.ConfigPath,
-                FontSize=11,
-                Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
-                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Margin=new Thickness(0,0,0,16),
-                TextWrapping=TextWrapping.Wrap};
+            TextBlock cfgPath = new TextBlock {
+                Text = "配置文件路径: " + OmniDictConfig.ConfigPath,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Win11Theme.FgTertiary),
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Margin = new Thickness(0, 0, 0, 16),
+                TextWrapping = TextWrapping.Wrap };
             sp.Children.Add(cfgPath);
 
-            // Group 1: 接口服务配置 (SettingsExpander/Card style)
+            // Group 1: 模型与接口
             sp.Children.Add(CreateSectionHeader("模型与接口"));
 
-            StackPanel card1=new StackPanel();
-
-            // API 地址 Row
-            TB=CreateWin11Input(M.apiBase, 260);
-            card1.Children.Add(CreateSettingsRow("API 端点地址", "OpenAI 兼容的推理服务地址", TB));
+            StackPanel card1 = new StackPanel();
+            TB = CreateWin11Input(M.apiBase, 280);
+            card1.Children.Add(CreateSettingsRow("API 端点地址", "OpenAI 兼容推理接口 (Chat Completions)", TB));
             card1.Children.Add(CreateRowDivider());
 
-            // API 密钥 Row
-            TK=CreateWin11Input(M.apiKey, 260);
-            card1.Children.Add(CreateSettingsRow("API 密钥 (Bearer Token)", "用于请求鉴权的 API Key", TK));
+            TK = CreateWin11Input(M.apiKey, 280);
+            card1.Children.Add(CreateSettingsRow("API 密钥", "用于鉴权的 Bearer Token / API Key", TK));
             card1.Children.Add(CreateRowDivider());
 
-            // 模型 Row
-            DockPanel modelRowWidget=new DockPanel{LastChildFill=true};
-            Button fetchBtn=new Button{Content="拉取列表",Width=72,Height=30,Cursor=Cursors.Hand,Margin=new Thickness(6,0,0,0)};
-            fetchBtn.Style=Win11Theme.CreateButtonStyle(false);
-            DockPanel.SetDock(fetchBtn,Dock.Right);
+            DockPanel modelRowWidget = new DockPanel { LastChildFill = true };
+            Button fetchBtn = new Button { Content = "拉取列表", Width = 72, Height = 30, Cursor = Cursors.Hand, Margin = new Thickness(6, 0, 0, 0) };
+            fetchBtn.Style = Win11Theme.CreateButtonStyle(false);
+            DockPanel.SetDock(fetchBtn, Dock.Right);
             modelRowWidget.Children.Add(fetchBtn);
 
-            Grid cmbGrid=new Grid{Height=30,Width=180};
-            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
-            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+            Grid cmbGrid = new Grid { Height = 30, Width = 200 };
+            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            CMBTEXT=CreateWin11Input(M.currentModel, 0);
-            CMBTEXT.BorderThickness=new Thickness(1,1,0,1);
-            CMBTEXT.Height=30;
-            Grid.SetColumn(CMBTEXT,0);
+            CMBTEXT = CreateWin11Input(M.currentModel, 0);
+            CMBTEXT.BorderThickness = new Thickness(1, 1, 0, 1);
+            CMBTEXT.Height = 30;
+            Grid.SetColumn(CMBTEXT, 0);
             cmbGrid.Children.Add(CMBTEXT);
 
-            Button arrowBtn=new Button{
-                Content="▾",Width=26,Height=30,
-                Background=new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness=new Thickness(0,1,1,1),
-                Cursor=Cursors.Hand};
-            Grid.SetColumn(arrowBtn,1);
+            Button arrowBtn = new Button {
+                Content = "▾", Width = 26, Height = 30,
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness = new Thickness(0, 1, 1, 1),
+                Cursor = Cursors.Hand };
+            Grid.SetColumn(arrowBtn, 1);
             cmbGrid.Children.Add(arrowBtn);
 
             modelRowWidget.Children.Add(cmbGrid);
-
-            card1.Children.Add(CreateSettingsRow("当前推理模型", "可直接输入名称或从服务器列表选取", modelRowWidget));
+            card1.Children.Add(CreateSettingsRow("当前推理模型", "可直接输入名称或从接口列表拉取选择", modelRowWidget));
             sp.Children.Add(WrapInCard(card1));
 
-            // Setup model dropdown popup
-            CMBLB=new ListBox{
-                Background=new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
-                BorderThickness=new Thickness(1),MaxHeight=220};
-            ScrollViewer.SetVerticalScrollBarVisibility(CMBLB,ScrollBarVisibility.Auto);
-            var lbItemStyle=new Style(typeof(ListBoxItem));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Win11Theme.BgSurface)));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty,new SolidColorBrush(Win11Theme.FgPrimary)));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty,new Thickness(10,6,10,6)));
-            var lbHover=new Trigger{Property=ListBoxItem.IsMouseOverProperty,Value=true};
-            lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Win11Theme.BgHover)));
+            CMBLB = new ListBox {
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderStrong),
+                BorderThickness = new Thickness(1), MaxHeight = 220 };
+            ScrollViewer.SetVerticalScrollBarVisibility(CMBLB, ScrollBarVisibility.Auto);
+            var lbItemStyle = new Style(typeof(ListBoxItem));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgSurface)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty, new SolidColorBrush(Win11Theme.FgPrimary)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty, new Thickness(10, 6, 10, 6)));
+            var lbHover = new Trigger { Property = ListBoxItem.IsMouseOverProperty, Value = true };
+            lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgHover)));
             lbItemStyle.Triggers.Add(lbHover);
-            var lbSel=new Trigger{Property=ListBoxItem.IsSelectedProperty,Value=true};
-            lbSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Color.FromArgb(50,0,103,192))));
+            var lbSel = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
+            lbSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromArgb(50, 0, 103, 192))));
             lbItemStyle.Triggers.Add(lbSel);
-            CMBLB.ItemContainerStyle=lbItemStyle;
-            CMBLB.SelectionChanged+=(s,e)=>{
-                if(CMBLB.SelectedItem!=null){
-                    CMBTEXT.Text=CMBLB.SelectedItem.ToString();
-                    CMBPOPUP.IsOpen=false;
+            CMBLB.ItemContainerStyle = lbItemStyle;
+            CMBLB.SelectionChanged += (s, e) => {
+                if (CMBLB.SelectedItem != null) {
+                    CMBTEXT.Text = CMBLB.SelectedItem.ToString();
+                    CMBPOPUP.IsOpen = false;
                 }
             };
-            CMBPOPUP=new System.Windows.Controls.Primitives.Popup{
-                PlacementTarget=cmbGrid,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
-                StaysOpen=false,Child=CMBLB};
-            arrowBtn.Click+=(s,e)=>{
-                if(CMBLB.Items.Count>0){
-                    CMBPOPUP.Width=cmbGrid.ActualWidth+arrowBtn.ActualWidth;
-                    CMBPOPUP.IsOpen=!CMBPOPUP.IsOpen;
-                }else{
+            CMBPOPUP = new System.Windows.Controls.Primitives.Popup {
+                PlacementTarget = cmbGrid, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                StaysOpen = false, Child = CMBLB };
+            arrowBtn.Click += (s, e) => {
+                if (CMBLB.Items.Count > 0) {
+                    CMBPOPUP.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
+                    CMBPOPUP.IsOpen = !CMBPOPUP.IsOpen;
+                } else {
                     fetchBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 }
             };
 
-            fetchBtn.Click+=(s,e)=>{
-                fetchBtn.IsEnabled=false; fetchBtn.Content="...";
-                string ep=TB.Text.Trim(); string key=TK.Text.Trim();
-                if(ep.EndsWith("/chat/completions")) ep=ep.Substring(0,ep.Length-"/chat/completions".Length);
-                if(!ep.EndsWith("/models")) ep=ep.TrimEnd('/')+"/models";
-                Task.Run(()=>{
-                    var ids=new List<string>();
-                    try{
-                        var req=(HttpWebRequest)WebRequest.Create(ep);
-                        req.Method="GET"; req.Headers["Authorization"]="Bearer "+key;
-                        req.UserAgent="Codex/1.0"; req.Timeout=10000;
-                        using(var resp=(HttpWebResponse)req.GetResponse())
-                        using(var sr2=new System.IO.StreamReader(resp.GetResponseStream())){
-                            string json=sr2.ReadToEnd();
-                            int pos=0;
-                            while(true){
-                                int idx2=json.IndexOf("\"id\"",pos);
-                                if(idx2<0)break;
-                                int q1=json.IndexOf('"',idx2+4);
-                                if(q1<0)break;
-                                int q2=json.IndexOf('"',q1+1);
-                                if(q2<0)break;
-                                string id=json.Substring(q1+1,q2-q1-1);
-                                if(id.Length>0&&!id.Contains("/")&&id.IndexOf("codex",System.StringComparison.OrdinalIgnoreCase)<0)ids.Add(id);
-                                pos=q2+1;
+            fetchBtn.Click += (s, e) => {
+                fetchBtn.IsEnabled = false; fetchBtn.Content = "...";
+                string ep = TB.Text.Trim(); string key = TK.Text.Trim();
+                if (ep.EndsWith("/chat/completions")) ep = ep.Substring(0, ep.Length - "/chat/completions".Length);
+                if (!ep.EndsWith("/models")) ep = ep.TrimEnd('/') + "/models";
+                Task.Run(() => {
+                    var ids = new List<string>();
+                    try {
+                        var req = (HttpWebRequest)WebRequest.Create(ep);
+                        req.Method = "GET"; req.Headers["Authorization"] = "Bearer " + key;
+                        req.UserAgent = "Codex/1.0"; req.Timeout = 10000;
+                        using (var resp = (HttpWebResponse)req.GetResponse())
+                        using (var sr2 = new System.IO.StreamReader(resp.GetResponseStream())) {
+                            string json = sr2.ReadToEnd();
+                            int pos = 0;
+                            while (true) {
+                                int idx2 = json.IndexOf("\"id\"", pos);
+                                if (idx2 < 0) break;
+                                int q1 = json.IndexOf('"', idx2 + 4);
+                                if (q1 < 0) break;
+                                int q2 = json.IndexOf('"', q1 + 1);
+                                if (q2 < 0) break;
+                                string id = json.Substring(q1 + 1, q2 - q1 - 1);
+                                if (id.Length > 0 && !id.Contains("/") && id.IndexOf("codex", System.StringComparison.OrdinalIgnoreCase) < 0) ids.Add(id);
+                                pos = q2 + 1;
                             }
                             ids.Sort();
                         }
-                    }catch(Exception ex){Logger.Error("FetchModels",ex);}
-                    this.Dispatcher.Invoke(()=>{
-                        fetchBtn.Content="拉取列表"; fetchBtn.IsEnabled=true;
-                        if(ids.Count>0){
-                            string cur=CMBTEXT.Text;
+                    } catch (Exception ex) { Logger.Error("FetchModels", ex); }
+                    this.Dispatcher.Invoke(() => {
+                        fetchBtn.Content = "拉取列表"; fetchBtn.IsEnabled = true;
+                        if (ids.Count > 0) {
+                            string cur = CMBTEXT.Text;
                             CMBLB.Items.Clear();
-                            foreach(var id in ids)CMBLB.Items.Add(id);
-                            CMBTEXT.Text=cur;
-                            CMBPOPUP.Width=cmbGrid.ActualWidth+arrowBtn.ActualWidth;
-                            CMBPOPUP.IsOpen=true;
+                            foreach (var id in ids) CMBLB.Items.Add(id);
+                            CMBTEXT.Text = cur;
+                            CMBPOPUP.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
+                            CMBPOPUP.IsOpen = true;
                         }
                     });
                 });
             };
 
-            // Group 2: 解析与识别模式
-            sp.Children.Add(CreateSectionHeader("图像识别与输入模式"));
+            // Group 2: 解析预设与 System Prompt 自定义
+            sp.Children.Add(CreateSectionHeader("AI 提示词与场景预设 (Prompt Presets)"));
 
-            StackPanel card2=new StackPanel();
-            CheckBox visionChk=new CheckBox{
-                Content="开启原生 Vision 图像输入",
-                IsChecked=M.useVision,
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                VerticalContentAlignment=VerticalAlignment.Center,
-                Cursor=Cursors.Hand};
+            StackPanel cardPreset = new StackPanel();
+
+            // Row 1: Preset selector and management buttons
+            DockPanel presetBar = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 4, 0, 8) };
+            presetCombo = new ComboBox {
+                Height = 30, Width = 200,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand };
+
+            Action<string> SyncComboItems = null;
+            SyncComboItems = (selectName) => {
+                presetCombo.Items.Clear();
+                foreach (var p in localPresets) presetCombo.Items.Add(p.Name);
+                if (selectName != null && presetCombo.Items.Contains(selectName)) {
+                    presetCombo.SelectedItem = selectName;
+                } else if (presetCombo.Items.Count > 0) {
+                    presetCombo.SelectedIndex = 0;
+                }
+            };
+
+            DockPanel.SetDock(presetCombo, Dock.Left);
+            presetBar.Children.Add(presetCombo);
+
+            StackPanel presetBtnBar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
+            Button addPresetBtn = new Button { Content = "新建预设", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
+            addPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
+            addPresetBtn.Click += (s, e) => {
+                string baseName = "新预设"; int count = 1;
+                string newName = baseName;
+                while (localPresets.Exists(x => x.Name == newName)) { count++; newName = baseName + count; }
+                localPresets.Add(new PromptPreset(newName, "你是一位屏幕助手，请清晰准确解析截图中内容。"));
+                SyncComboItems(newName);
+            };
+            presetBtnBar.Children.Add(addPresetBtn);
+
+            Button renamePresetBtn = new Button { Content = "重命名", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
+            renamePresetBtn.Style = Win11Theme.CreateButtonStyle(false);
+            renamePresetBtn.Click += (s, e) => {
+                if (presetCombo.SelectedItem == null) return;
+                string curName = presetCombo.SelectedItem.ToString();
+                var p = localPresets.Find(x => x.Name == curName);
+                if (p == null) return;
+
+                var promptWin = new Window {
+                    Title = "重命名预设", Width = 360, Height = 170,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = this, Background = new SolidColorBrush(Win11Theme.BgWindow),
+                    ResizeMode = ResizeMode.NoResize };
+                Win11Theme.ApplyToWindow(promptWin);
+
+                var pg = new Grid { Margin = new Thickness(16) };
+                pg.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                pg.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                pg.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var pLbl = new TextBlock { Text = "预设名称:", FontSize = 12, Foreground = new SolidColorBrush(Win11Theme.FgPrimary), Margin = new Thickness(0, 0, 0, 6) };
+                Grid.SetRow(pLbl, 0); pg.Children.Add(pLbl);
+
+                var pBox = CreateWin11Input(curName, 0);
+                pBox.SelectAll();
+                Grid.SetRow(pBox, 1); pg.Children.Add(pBox);
+
+                var pBtns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+                var pOk = new Button { Content = "确定", Width = 64, Height = 28, Margin = new Thickness(0, 0, 8, 0) };
+                pOk.Style = Win11Theme.CreateButtonStyle(true);
+                pOk.Click += (s2, e2) => {
+                    string nn = pBox.Text.Trim();
+                    if (!string.IsNullOrEmpty(nn) && nn != curName) {
+                        p.Name = nn;
+                        SyncComboItems(nn);
+                    }
+                    promptWin.Close();
+                };
+                pBtns.Children.Add(pOk);
+                var pCancel = new Button { Content = "取消", Width = 64, Height = 28 };
+                pCancel.Style = Win11Theme.CreateButtonStyle(false);
+                pCancel.Click += (s2, e2) => promptWin.Close();
+                pBtns.Children.Add(pCancel);
+
+                Grid.SetRow(pBtns, 2); pg.Children.Add(pBtns);
+                promptWin.Content = pg;
+                promptWin.ShowDialog();
+            };
+            presetBtnBar.Children.Add(renamePresetBtn);
+
+            Button delPresetBtn = new Button { Content = "删除预设", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
+            delPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
+            delPresetBtn.Click += (s, e) => {
+                if (presetCombo.SelectedItem == null) return;
+                if (localPresets.Count <= 1) {
+                    MessageBox.Show("至少需要保留一个预设！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                string curName = presetCombo.SelectedItem.ToString();
+                localPresets.RemoveAll(x => x.Name == curName);
+                SyncComboItems(null);
+            };
+            presetBtnBar.Children.Add(delPresetBtn);
+
+            Button resetPresetBtn = new Button { Content = "恢复默认预设", Height = 30, Padding = new Thickness(10, 0, 10, 0) };
+            resetPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
+            resetPresetBtn.Click += (s, e) => {
+                if (MessageBox.Show("确定将所有预设恢复为系统默认吗？当前修改将丢失。", "确认恢复", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) {
+                    localPresets = OmniDictConfig.GetDefaultPresets();
+                    SyncComboItems(null);
+                }
+            };
+            presetBtnBar.Children.Add(resetPresetBtn);
+
+            DockPanel.SetDock(presetBtnBar, Dock.Right);
+            presetBar.Children.Add(presetBtnBar);
+            cardPreset.Children.Add(presetBar);
+
+            // Row 2: Prompt content editor
+            TextBlock editLbl = new TextBlock {
+                Text = "提示词模板 (System Prompt，支持实时自由修改)：",
+                FontSize = 11.5,
+                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
+                Margin = new Thickness(0, 6, 0, 4) };
+            cardPreset.Children.Add(editLbl);
+
+            promptBox = new TextBox {
+                Height = 110,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Padding = new Thickness(8),
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                CaretBrush = new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                FontSize = 12 };
+            cardPreset.Children.Add(promptBox);
+
+            presetCombo.SelectionChanged += (s, e) => {
+                if (presetCombo.SelectedItem != null) {
+                    string selName = presetCombo.SelectedItem.ToString();
+                    var p = localPresets.Find(x => x.Name == selName);
+                    if (p != null) promptBox.Text = p.Content;
+                }
+            };
+
+            promptBox.TextChanged += (s, e) => {
+                if (presetCombo.SelectedItem != null) {
+                    string selName = presetCombo.SelectedItem.ToString();
+                    var p = localPresets.Find(x => x.Name == selName);
+                    if (p != null) p.Content = promptBox.Text;
+                }
+            };
+
+            SyncComboItems(M.currentPresetName);
+            sp.Children.Add(WrapInCard(cardPreset));
+
+            // Group 3: 图像识别与输入模式
+            sp.Children.Add(CreateSectionHeader("输入与识别模式"));
+
+            StackPanel card2 = new StackPanel();
+            CheckBox visionChk = new CheckBox {
+                Content = "开启原生 Vision 多模态图像输入",
+                IsChecked = M.useVision,
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand };
             card2.Children.Add(CreateSettingsRow(
                 "图像识别模式 (Multimodal Vision)",
-                "直接上传截图供多模态模型深度识别。取消则优先调用本地 Windows OCR 离线提取文字（适用于纯文本大模型）",
+                "直接上传截图供多模态模型端到端识别。取消勾选则优先调用 Windows 本地 OCR 引擎离线提取文本后再传入（适合纯文本模型）",
                 visionChk));
             sp.Children.Add(WrapInCard(card2));
 
-            // Group 3: 全局快捷键与操作
-            sp.Children.Add(CreateSectionHeader("快捷操作指南"));
+            // Group 4: 全局快捷键指南
+            sp.Children.Add(CreateSectionHeader("全局快捷键操作指南"));
 
-            StackPanel card3=new StackPanel();
-            TextBlock hk1=new TextBlock{
-                Text="Alt + Q",
-                FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Win11Theme.Accent),
-                VerticalAlignment=VerticalAlignment.Center,
-                FontFamily=new FontFamily("Consolas, Segoe UI")};
-            card3.Children.Add(CreateSettingsRow("截图查词释义", "在任意游戏或应用中唤醒快速区域框选", hk1));
+            StackPanel card3 = new StackPanel();
+            TextBlock hk1 = new TextBlock {
+                Text = "Alt + Q",
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Win11Theme.Accent),
+                VerticalAlignment = VerticalAlignment.Center,
+                FontFamily = new FontFamily("Consolas, Segoe UI") };
+            card3.Children.Add(CreateSettingsRow("截图查词 / 全场景屏幕解析", "在任意全屏游戏、专业软件或网页中呼出区域框选", hk1));
             card3.Children.Add(CreateRowDivider());
 
-            TextBlock hk2=new TextBlock{
-                Text="Alt + W",
-                FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Win11Theme.Accent),
-                VerticalAlignment=VerticalAlignment.Center,
-                FontFamily=new FontFamily("Consolas, Segoe UI")};
-            card3.Children.Add(CreateSettingsRow("全局关闭释义浮窗", "不抢占游戏焦点，随心瞬间关闭浮窗", hk2));
+            TextBlock hk2 = new TextBlock {
+                Text = "Alt + W",
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Win11Theme.Accent),
+                VerticalAlignment = VerticalAlignment.Center,
+                FontFamily = new FontFamily("Consolas, Segoe UI") };
+            card3.Children.Add(CreateSettingsRow("静默关闭悬浮窗", "完全不抢占游戏输入焦点，随时关闭释义浮窗", hk2));
             sp.Children.Add(WrapInCard(card3));
 
-            sv.Content=sp;
-            Grid.SetRow(sv,0);
+            sv.Content = sp;
+            Grid.SetRow(sv, 0);
             rootGrid.Children.Add(sv);
 
-            // Bottom Action Bar (Win11 standard dialog footer)
-            Border bottomBar=new Border{
-                Background=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(28,28,28) : Color.FromRgb(240,240,240)),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness=new Thickness(0,1,0,0),
-                Padding=new Thickness(24,12,24,12)};
+            // Bottom Action Bar
+            Border bottomBar = new Border {
+                Background = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(28, 28, 28) : Color.FromRgb(240, 240, 240)),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Padding = new Thickness(24, 12, 24, 12) };
 
-            StackPanel btns=new StackPanel{
-                Orientation=Orientation.Horizontal,
-                HorizontalAlignment=HorizontalAlignment.Right};
+            StackPanel btns = new StackPanel {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right };
 
-            Button save=new Button{Content="保存设置",Width=88,Height=32,Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
-            save.Style=Win11Theme.CreateButtonStyle(true);
-            save.Click+=(s,e)=>{
-                M.apiBase=TB.Text.Trim();
-                M.apiKey=TK.Text.Trim();
-                M.currentModel=CMBTEXT.Text.Trim();
-                M.useVision=visionChk.IsChecked==true;
-                double sx=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastX:-1;
-                double sy=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastY:-1;
-                GameDictConfig.Save(M.apiBase,M.apiKey,M.currentModel,M.useVision,sx,sy);
+            Button save = new Button { Content = "保存设置", Width = 88, Height = 32, Cursor = Cursors.Hand, Margin = new Thickness(0, 0, 8, 0) };
+            save.Style = Win11Theme.CreateButtonStyle(true);
+            save.Click += (s, e) => {
+                M.apiBase = TB.Text.Trim();
+                M.apiKey = TK.Text.Trim();
+                M.currentModel = CMBTEXT.Text.Trim();
+                M.useVision = visionChk.IsChecked == true;
+                if (presetCombo.SelectedItem != null) {
+                    M.currentPresetName = presetCombo.SelectedItem.ToString();
+                }
+                M.promptPresets = localPresets;
+
+                double sx = M.floatingWin != null && M.floatingWin.HasCustomPosition ? M.floatingWin.LastX : -1;
+                double sy = M.floatingWin != null && M.floatingWin.HasCustomPosition ? M.floatingWin.LastY : -1;
+                OmniDictConfig.Save(M.apiBase, M.apiKey, M.currentModel, M.useVision, sx, sy, M.currentPresetName, M.promptPresets);
                 M.ApplyTheme();
                 this.Close();
             };
 
-            Button cancel=new Button{Content="取消",Width=72,Height=32,Cursor=Cursors.Hand};
-            cancel.Style=Win11Theme.CreateButtonStyle(false);
-            cancel.Click+=(s,e)=>this.Close();
+            Button cancel = new Button { Content = "取消", Width = 72, Height = 32, Cursor = Cursors.Hand };
+            cancel.Style = Win11Theme.CreateButtonStyle(false);
+            cancel.Click += (s, e) => this.Close();
 
             btns.Children.Add(save);
             btns.Children.Add(cancel);
-            bottomBar.Child=btns;
+            bottomBar.Child = btns;
 
-            Grid.SetRow(bottomBar,1);
+            Grid.SetRow(bottomBar, 1);
             rootGrid.Children.Add(bottomBar);
 
-            this.Content=rootGrid;
+            this.Content = rootGrid;
         }
 
         private TextBlock CreateSectionHeader(string text) {
-            return new TextBlock{
-                Text=text,
-                FontSize=13,
-                FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
-                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Margin=new Thickness(2,12,0,6)};
+            return new TextBlock {
+                Text = text,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Margin = new Thickness(2, 12, 0, 6) };
         }
 
         private Border WrapInCard(UIElement content) {
-            return new Border{
-                CornerRadius=new CornerRadius(8),
-                Background=new SolidColorBrush(Win11Theme.BgSurface),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness=new Thickness(1),
-                Padding=new Thickness(16,8,16,8),
-                Margin=new Thickness(0,0,0,6),
-                Child=content};
+            return new Border {
+                CornerRadius = new CornerRadius(8),
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(16, 12, 16, 12),
+                Margin = new Thickness(0, 0, 0, 6),
+                Child = content };
         }
 
         private Grid CreateSettingsRow(string header, string description, UIElement actionWidget) {
-            Grid row=new Grid{Margin=new Thickness(0,8,0,8)};
-            row.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
-            row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+            Grid row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            StackPanel textPanel=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)};
-            TextBlock h=new TextBlock{
-                Text=header,
-                FontSize=13,
-                FontWeight=FontWeights.Normal,
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            StackPanel textPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+            TextBlock h = new TextBlock {
+                Text = header,
+                FontSize = 13,
+                FontWeight = FontWeights.Normal,
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei") };
             textPanel.Children.Add(h);
 
-            if(!string.IsNullOrEmpty(description)){
-                TextBlock desc=new TextBlock{
-                    Text=description,
-                    FontSize=11.5,
-                    Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
-                    FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                    Margin=new Thickness(0,2,0,0),
-                    TextWrapping=TextWrapping.Wrap};
+            if (!string.IsNullOrEmpty(description)) {
+                TextBlock desc = new TextBlock {
+                    Text = description,
+                    FontSize = 11.5,
+                    Foreground = new SolidColorBrush(Win11Theme.FgTertiary),
+                    FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                    Margin = new Thickness(0, 2, 0, 0),
+                    TextWrapping = TextWrapping.Wrap };
                 textPanel.Children.Add(desc);
             }
 
-            Grid.SetColumn(textPanel,0);
+            Grid.SetColumn(textPanel, 0);
             row.Children.Add(textPanel);
 
-            if(actionWidget!=null){
-                Grid.SetColumn(actionWidget,1);
+            if (actionWidget != null) {
+                Grid.SetColumn(actionWidget, 1);
                 row.Children.Add(actionWidget);
             }
 
@@ -1019,29 +1311,30 @@ namespace GameDictApp {
         }
 
         private Border CreateRowDivider() {
-            return new Border{
-                Height=1,
-                Background=new SolidColorBrush(Win11Theme.BorderSubtle),
-                Margin=new Thickness(0,4,0,4)};
+            return new Border {
+                Height = 1,
+                Background = new SolidColorBrush(Win11Theme.BorderSubtle),
+                Margin = new Thickness(0, 4, 0, 4) };
         }
 
         private TextBox CreateWin11Input(string text, double width = 0) {
-            var tb = new TextBox{
-                Text=text,
-                Height=30,
-                VerticalContentAlignment=VerticalAlignment.Center,
-                Padding=new Thickness(10,0,10,0),
-                Background=new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
-                CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness=new Thickness(1),
-                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                FontSize=12};
-            if(width > 0) tb.Width = width;
+            var tb = new TextBox {
+                Text = text,
+                Height = 30,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(10, 0, 10, 0),
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                CaretBrush = new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                FontSize = 12 };
+            if (width > 0) tb.Width = width;
             return tb;
         }
     }
+
     public class FloatingResultWindow : Window {
         private RichTextBox contentBox;
         private System.Windows.Controls.Image previewImg;
@@ -1062,84 +1355,93 @@ namespace GameDictApp {
         private const int SW_SHOWNOACTIVATE = 4;
 
         public FloatingResultWindow() {
-            this.Title="GameDict Float"; this.Width=420; this.Height=520;
-            this.WindowStyle=WindowStyle.None; this.AllowsTransparency=true;
-            this.Background=Brushes.Transparent; this.Topmost=true;
-            this.ShowInTaskbar=false; this.ResizeMode=ResizeMode.NoResize;
-            this.Focusable=false;
+            this.Title = "OmniDict Float"; this.Width = 420; this.Height = 520;
+            this.WindowStyle = WindowStyle.None; this.AllowsTransparency = true;
+            this.Background = Brushes.Transparent; this.Topmost = true;
+            this.ShowInTaskbar = false; this.ResizeMode = ResizeMode.NoResize;
+            this.Focusable = false;
             this.SourceInitialized += (s, e) => {
                 var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
                 int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
                 SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
             };
 
-            root=new Border{CornerRadius=new CornerRadius(12),
-                BorderThickness=new Thickness(1),Margin=new Thickness(8)};
-            root.Effect=new DropShadowEffect{BlurRadius=22,Color=Colors.Black,Opacity=0.35,ShadowDepth=4,Direction=270};
-            root.MouseLeftButtonDown+=(s,e)=>{
-                if(e.LeftButton==MouseButtonState.Pressed){
-                    try{
+            root = new Border {
+                CornerRadius = new CornerRadius(12),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(8) };
+            root.Effect = new DropShadowEffect { BlurRadius = 22, Color = Colors.Black, Opacity = 0.35, ShadowDepth = 4, Direction = 270 };
+            root.MouseLeftButtonDown += (s, e) => {
+                if (e.LeftButton == MouseButtonState.Pressed) {
+                    try {
                         this.DragMove();
-                        LastX=this.Left; LastY=this.Top; HasCustomPosition=true;
-                        GameDictConfig.SavePosition(LastX,LastY);
-                    }catch{}
+                        LastX = this.Left; LastY = this.Top; HasCustomPosition = true;
+                        OmniDictConfig.SavePosition(LastX, LastY);
+                    } catch {}
                 }
             };
-            Grid g=new Grid{Margin=new Thickness(12,10,12,10)};
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            Grid g = new Grid { Margin = new Thickness(12, 10, 12, 10) };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Header
-            DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,8)};
-            Border bg=new Border{Width=18,Height=18,CornerRadius=new CornerRadius(4),
-                Background=new SolidColorBrush(Color.FromRgb(0,103,192)),VerticalAlignment=VerticalAlignment.Center};
-            bg.Child=new TextBlock{Text="G",Foreground=Brushes.White,FontSize=10,FontWeight=FontWeights.Bold,
-                HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};
-            DockPanel.SetDock(bg,Dock.Left); h.Children.Add(bg);
+            DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 0, 0, 8) };
+            Border bg = new Border {
+                Width = 18, Height = 18, CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(Color.FromRgb(0, 103, 192)), VerticalAlignment = VerticalAlignment.Center };
+            bg.Child = new TextBlock {
+                Text = "O", Foreground = Brushes.White, FontSize = 10, FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(bg, Dock.Left); h.Children.Add(bg);
 
-            StackPanel rightControls=new StackPanel{Orientation=Orientation.Horizontal};
+            StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
 
-            altWTag=new Border{CornerRadius=new CornerRadius(4),
-                BorderThickness=new Thickness(1),Padding=new Thickness(6,2,6,2),
-                Margin=new Thickness(0,0,8,0),VerticalAlignment=VerticalAlignment.Center,Cursor=Cursors.Hand};
-            altWTag.MouseLeftButtonDown+=(s,e)=>this.Hide();
-            altWText=new TextBlock{Text="Alt+W",FontSize=10.5,FontWeight=FontWeights.Medium,
-                FontFamily=new FontFamily("Consolas, Segoe UI Variable Text, Segoe UI")};
-            altWTag.Child=altWText;
+            altWTag = new Border {
+                CornerRadius = new CornerRadius(4),
+                BorderThickness = new Thickness(1), Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand };
+            altWTag.MouseLeftButtonDown += (s, e) => this.Hide();
+            altWText = new TextBlock {
+                Text = "Alt+W", FontSize = 10.5, FontWeight = FontWeights.Medium,
+                FontFamily = new FontFamily("Consolas, Segoe UI Variable Text, Segoe UI") };
+            altWTag.Child = altWText;
             rightControls.Children.Add(altWTag);
 
-            close=new Button{Content="✕",Width=26,Height=26,
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,FontWeight=FontWeights.Bold};
-            close.Click+=(s,e)=>this.Hide();
+            close = new Button {
+                Content = "✕", Width = 26, Height = 26,
+                BorderThickness = new Thickness(0), Cursor = Cursors.Hand, FontWeight = FontWeights.Bold };
+            close.Click += (s, e) => this.Hide();
             rightControls.Children.Add(close);
 
-            DockPanel.SetDock(rightControls,Dock.Right); h.Children.Add(rightControls);
-            Grid.SetRow(h,0); g.Children.Add(h);
+            DockPanel.SetDock(rightControls, Dock.Right); h.Children.Add(rightControls);
+            Grid.SetRow(h, 0); g.Children.Add(h);
 
             // Preview thumbnail
-            previewImg=new System.Windows.Controls.Image{
-                MaxHeight=100,Stretch=System.Windows.Media.Stretch.Uniform,
-                HorizontalAlignment=HorizontalAlignment.Left};
-            previewBorder=new Border{CornerRadius=new CornerRadius(6),
-                BorderThickness=new Thickness(1),Padding=new Thickness(2),
-                Margin=new Thickness(0,0,0,8),Visibility=Visibility.Collapsed};
-            previewBorder.Child=previewImg;
-            Grid.SetRow(previewBorder,1); g.Children.Add(previewBorder);
+            previewImg = new System.Windows.Controls.Image {
+                MaxHeight = 100, Stretch = System.Windows.Media.Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Left };
+            previewBorder = new Border {
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(1), Padding = new Thickness(2),
+                Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
+            previewBorder.Child = previewImg;
+            Grid.SetRow(previewBorder, 1); g.Children.Add(previewBorder);
 
             // Content
-            contentBox=new RichTextBox{Background=Brushes.Transparent,
-                BorderThickness=new Thickness(0),IsReadOnly=true,
-                FontSize=13,FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Padding=new Thickness(2)};
-            ScrollViewer.SetVerticalScrollBarVisibility(contentBox,ScrollBarVisibility.Auto);
-            ScrollViewer.SetHorizontalScrollBarVisibility(contentBox,ScrollBarVisibility.Disabled);
-            cc=new Border{CornerRadius=new CornerRadius(8),Padding=new Thickness(4,2,4,2)};
-            cc.Child=contentBox; Grid.SetRow(cc,2); g.Children.Add(cc);
+            contentBox = new RichTextBox {
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0), IsReadOnly = true,
+                FontSize = 13, FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Padding = new Thickness(2) };
+            ScrollViewer.SetVerticalScrollBarVisibility(contentBox, ScrollBarVisibility.Auto);
+            ScrollViewer.SetHorizontalScrollBarVisibility(contentBox, ScrollBarVisibility.Disabled);
+            cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(4, 2, 4, 2) };
+            cc.Child = contentBox; Grid.SetRow(cc, 2); g.Children.Add(cc);
 
-            root.Child=g; this.Content=root;
-            this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Hide();};
+            root.Child = g; this.Content = root;
+            this.KeyDown += (s, e) => { if (e.Key == Key.Escape) this.Hide(); };
 
             Win11Theme.ThemeChanged += () => this.Dispatcher.Invoke(ApplyFloatTheme);
             ApplyFloatTheme();
@@ -1158,257 +1460,273 @@ namespace GameDictApp {
             previewBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
             contentBox.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 235) : Color.FromRgb(25, 25, 30));
 
-            if(altWTag!=null){
+            if (altWTag != null) {
                 altWTag.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 0, 103, 192) : Color.FromArgb(25, 0, 103, 192));
                 altWTag.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(90, 0, 103, 192) : Color.FromArgb(70, 0, 103, 192));
                 altWText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(140, 180, 240) : Color.FromRgb(0, 90, 180));
             }
         }
 
-        public void ShowLoading(double cursorX,double cursorY,byte[] imgBytes){
-            this.WindowState=WindowState.Normal; this.Width=420; this.Height=520;
-            if(HasCustomPosition&&LastX>=0&&LastY>=0){
-                EnsureWithinScreen(LastX,LastY);
-            }else{
-                PositionAt(cursorX,cursorY);
+        public void ShowLoading(double cursorX, double cursorY, byte[] imgBytes) {
+            this.WindowState = WindowState.Normal; this.Width = 420; this.Height = 520;
+            if (HasCustomPosition && LastX >= 0 && LastY >= 0) {
+                EnsureWithinScreen(LastX, LastY);
+            } else {
+                PositionAt(cursorX, cursorY);
             }
-            if(imgBytes!=null&&imgBytes.Length>0){
-                try{
-                    var bmp=new System.Windows.Media.Imaging.BitmapImage();
+            if (imgBytes != null && imgBytes.Length > 0) {
+                try {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
                     bmp.BeginInit();
-                    bmp.StreamSource=new MemoryStream(imgBytes);
-                    bmp.CacheOption=System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.StreamSource = new MemoryStream(imgBytes);
+                    bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
                     bmp.EndInit(); bmp.Freeze();
-                    previewImg.Source=bmp;
-                    previewBorder.Visibility=Visibility.Visible;
-                }catch{previewBorder.Visibility=Visibility.Collapsed;}
-            }else{previewBorder.Visibility=Visibility.Collapsed;}
+                    previewImg.Source = bmp;
+                    previewBorder.Visibility = Visibility.Visible;
+                } catch { previewBorder.Visibility = Visibility.Collapsed; }
+            } else { previewBorder.Visibility = Visibility.Collapsed; }
             SetRichText("⌛ 正在识别中...");
             this.Show();
             var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            if(handle != IntPtr.Zero){
+            if (handle != IntPtr.Zero) {
                 ShowWindow(handle, SW_SHOWNOACTIVATE);
             }
         }
 
-        public void ShowResult(string text){SetRichText(text);}
+        public void ShowResult(string text) { SetRichText(text); }
 
-        private void SetRichText(string raw){
+        private void SetRichText(string raw) {
             bool isDark = Win11Theme.IsDarkTheme;
-            var doc=new System.Windows.Documents.FlowDocument();
-            doc.PagePadding=new Thickness(0);
-            string[] lns=raw.Replace("\r\n","\n").Replace("\r","\n").Split('\n');
-            var curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0),LineHeight=double.NaN};
-            bool firstBlock=true;
-            System.Action flushPara=()=>{
-                if(curPara.Inlines.Count>0){doc.Blocks.Add(curPara);firstBlock=false;}
-                curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0,3,0,0),LineHeight=double.NaN};
+            var doc = new System.Windows.Documents.FlowDocument();
+            doc.PagePadding = new Thickness(0);
+            string[] lns = raw.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            var curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = double.NaN };
+            bool firstBlock = true;
+            System.Action flushPara = () => {
+                if (curPara.Inlines.Count > 0) { doc.Blocks.Add(curPara); firstBlock = false; }
+                curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 3, 0, 0), LineHeight = double.NaN };
             };
-            foreach(string line in lns){
-                string t=line.TrimEnd();
-                if(t.TrimStart('-').Replace("-","").Trim().Length==0&&t.Length>=2&&t.Length<=4){flushPara();continue;}
-                if(t.StartsWith("#### ")){
+            foreach (string line in lns) {
+                string t = line.TrimEnd();
+                if (t.TrimStart('-').Replace("-", "").Trim().Length == 0 && t.Length >= 2 && t.Length <= 4) { flushPara(); continue; }
+                if (t.StartsWith("#### ")) {
                     flushPara();
-                    Color hc = isDark ? Color.FromRgb(160,180,240) : Color.FromRgb(0,90,180);
-                    AddHeading(doc,t.Substring(5),12.5,hc,new Thickness(0,firstBlock?0:6,0,2));
-                    firstBlock=false;continue;
+                    Color hc = isDark ? Color.FromRgb(160, 180, 240) : Color.FromRgb(0, 90, 180);
+                    AddHeading(doc, t.Substring(5), 12.5, hc, new Thickness(0, firstBlock ? 0 : 6, 0, 2));
+                    firstBlock = false; continue;
                 }
-                if(t.StartsWith("### ")){
+                if (t.StartsWith("### ")) {
                     flushPara();
-                    Color hc = isDark ? Color.FromRgb(140,165,255) : Color.FromRgb(0,80,195);
-                    AddHeading(doc,t.Substring(4),13.5,hc,new Thickness(0,firstBlock?0:8,0,2));
-                    firstBlock=false;continue;
+                    Color hc = isDark ? Color.FromRgb(140, 165, 255) : Color.FromRgb(0, 80, 195);
+                    AddHeading(doc, t.Substring(4), 13.5, hc, new Thickness(0, firstBlock ? 0 : 8, 0, 2));
+                    firstBlock = false; continue;
                 }
-                if(t.StartsWith("## ")){
+                if (t.StartsWith("## ")) {
                     flushPara();
-                    Color hc = isDark ? Color.FromRgb(180,200,255) : Color.FromRgb(0,103,192);
-                    AddHeading(doc,t.Substring(3),14.5,hc,new Thickness(0,firstBlock?0:10,0,2));
-                    firstBlock=false;continue;
+                    Color hc = isDark ? Color.FromRgb(180, 200, 255) : Color.FromRgb(0, 103, 192);
+                    AddHeading(doc, t.Substring(3), 14.5, hc, new Thickness(0, firstBlock ? 0 : 10, 0, 2));
+                    firstBlock = false; continue;
                 }
-                if(t.Length==0){flushPara();continue;}
-                if(t.StartsWith("- ")||t.StartsWith("* ")){
-                    string content=t.Substring(2);
+                if (t.Length == 0) { flushPara(); continue; }
+                if (t.StartsWith("- ") || t.StartsWith("* ")) {
+                    string content = t.Substring(2);
                     flushPara();
-                    var bp=new System.Windows.Documents.Paragraph{Margin=new Thickness(12,1,0,1),LineHeight=double.NaN};
-                    var bdot=new System.Windows.Documents.Run("• ");
-                    bdot.Foreground=new SolidColorBrush(isDark ? Color.FromRgb(99,140,255) : Color.FromRgb(0,103,192));
+                    var bp = new System.Windows.Documents.Paragraph { Margin = new Thickness(12, 1, 0, 1), LineHeight = double.NaN };
+                    var bdot = new System.Windows.Documents.Run("• ");
+                    bdot.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(99, 140, 255) : Color.FromRgb(0, 103, 192));
                     bp.Inlines.Add(bdot);
-                    AddInlineText(bp,content,isDark);
-                    doc.Blocks.Add(bp);firstBlock=false;
-                    curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0,3,0,0),LineHeight=double.NaN};
+                    AddInlineText(bp, content, isDark);
+                    doc.Blocks.Add(bp); firstBlock = false;
+                    curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 3, 0, 0), LineHeight = double.NaN };
                     continue;
                 }
-                AddInlineText(curPara,t,isDark);
+                AddInlineText(curPara, t, isDark);
                 curPara.Inlines.Add(new System.Windows.Documents.LineBreak());
             }
-            if(curPara.Inlines.Count>0)doc.Blocks.Add(curPara);
-            contentBox.Document=doc;
+            if (curPara.Inlines.Count > 0) doc.Blocks.Add(curPara);
+            contentBox.Document = doc;
         }
 
-        private void AddHeading(System.Windows.Documents.FlowDocument doc,string text,double fs,Color c,Thickness margin){
-            var p=new System.Windows.Documents.Paragraph{Margin=margin,LineHeight=double.NaN};
-            var r=new System.Windows.Documents.Run(text);
-            r.FontWeight=FontWeights.Bold;r.FontSize=fs;r.Foreground=new SolidColorBrush(c);
+        private void AddHeading(System.Windows.Documents.FlowDocument doc, string text, double fs, Color c, Thickness margin) {
+            var p = new System.Windows.Documents.Paragraph { Margin = margin, LineHeight = double.NaN };
+            var r = new System.Windows.Documents.Run(text);
+            r.FontWeight = FontWeights.Bold; r.FontSize = fs; r.Foreground = new SolidColorBrush(c);
             p.Inlines.Add(r); doc.Blocks.Add(p);
         }
 
-        private void AddInlineText(System.Windows.Documents.Paragraph para,string text,bool isDark){
-            int i=0;
-            while(i<text.Length){
-                int si=text.IndexOf("**",i);
-                if(si<0){AppendRun(para,text.Substring(i),false,isDark);break;}
-                if(si>i)AppendRun(para,text.Substring(i,si-i),false,isDark);
-                int ei=text.IndexOf("**",si+2);
-                if(ei<0){AppendRun(para,text.Substring(si),false,isDark);break;}
-                AppendRun(para,text.Substring(si+2,ei-si-2),true,isDark);
-                i=ei+2;
+        private void AddInlineText(System.Windows.Documents.Paragraph para, string text, bool isDark) {
+            int i = 0;
+            while (i < text.Length) {
+                int si = text.IndexOf("**", i);
+                if (si < 0) { AppendRun(para, text.Substring(i), false, isDark); break; }
+                if (si > i) AppendRun(para, text.Substring(i, si - i), false, isDark);
+                int ei = text.IndexOf("**", si + 2);
+                if (ei < 0) { AppendRun(para, text.Substring(si), false, isDark); break; }
+                AppendRun(para, text.Substring(si + 2, ei - si - 2), true, isDark);
+                i = ei + 2;
             }
         }
 
-        private void AppendRun(System.Windows.Documents.Paragraph para,string text,bool bold,bool isDark){
-            if(text.Length==0)return;
-            var r=new System.Windows.Documents.Run(text);
-            if(bold){
-                r.FontWeight=FontWeights.Bold;
-                r.Foreground=new SolidColorBrush(isDark ? Color.FromRgb(245,248,255) : Color.FromRgb(10,10,20));
+        private void AppendRun(System.Windows.Documents.Paragraph para, string text, bool bold, bool isDark) {
+            if (text.Length == 0) return;
+            var r = new System.Windows.Documents.Run(text);
+            if (bold) {
+                r.FontWeight = FontWeights.Bold;
+                r.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(245, 248, 255) : Color.FromRgb(10, 10, 20));
             } else {
-                r.Foreground=new SolidColorBrush(isDark ? Color.FromRgb(215,215,225) : Color.FromRgb(30,30,40));
+                r.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(215, 215, 225) : Color.FromRgb(30, 30, 40));
             }
             para.Inlines.Add(r);
         }
 
-        private void PositionAt(double x,double y){
-            double tx=x+20,ty=y+20;
-            EnsureWithinScreen(tx,ty);
+        private void PositionAt(double x, double y) {
+            double tx = x + 20, ty = y + 20;
+            EnsureWithinScreen(tx, ty);
         }
 
-        private void EnsureWithinScreen(double targetX,double targetY){
-            double maxX=SystemParameters.PrimaryScreenWidth-Width;
-            double maxY=SystemParameters.PrimaryScreenHeight-Height;
-            if(targetX>maxX)targetX=maxX;
-            if(targetY>maxY)targetY=maxY;
-            if(targetX<0)targetX=0;
-            if(targetY<0)targetY=0;
-            this.Left=targetX; this.Top=targetY;
+        private void EnsureWithinScreen(double targetX, double targetY) {
+            double maxX = SystemParameters.PrimaryScreenWidth - Width;
+            double maxY = SystemParameters.PrimaryScreenHeight - Height;
+            if (targetX > maxX) targetX = maxX;
+            if (targetY > maxY) targetY = maxY;
+            if (targetX < 0) targetX = 0;
+            if (targetY < 0) targetY = 0;
+            this.Left = targetX; this.Top = targetY;
         }
     }
 
     public static class HistoryStore {
-        private static readonly string HistoryPath=System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","history.dat");
-        public  static readonly string ImagesDir=System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","images");
-        private const string SEP="---ENTRY---";
-        public static string SaveImage(byte[] bytes){
-            try{
+        public  static readonly string AppDataDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniDict");
+        public  static readonly string HistoryPath = System.IO.Path.Combine(AppDataDir, "history.dat");
+        public  static readonly string ImagesDir = System.IO.Path.Combine(AppDataDir, "images");
+
+        private static readonly string OldAppDataDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameDict");
+        private static readonly string OldHistoryPath = System.IO.Path.Combine(OldAppDataDir, "history.dat");
+
+        private const string SEP = "---ENTRY---";
+
+        public static string SaveImage(byte[] bytes) {
+            try {
                 Directory.CreateDirectory(ImagesDir);
-                string path=System.IO.Path.Combine(ImagesDir,DateTime.Now.ToString("yyyyMMdd_HHmmss_fff")+".png");
-                File.WriteAllBytes(path,bytes); return path;
-            }catch(Exception ex){Logger.Error("SaveImage",ex);return null;}
+                string path = System.IO.Path.Combine(ImagesDir, DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".png");
+                File.WriteAllBytes(path, bytes); return path;
+            } catch (Exception ex) { Logger.Error("SaveImage", ex); return null; }
         }
-        public static void Save(List<HistoryEntry> items){
-            try{
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(HistoryPath));
-                var sb=new System.Text.StringBuilder();
-                foreach(var e in items){
+
+        public static void Save(List<HistoryEntry> items) {
+            try {
+                Directory.CreateDirectory(AppDataDir);
+                var sb = new StringBuilder();
+                foreach (var e in items) {
                     sb.AppendLine(SEP);
-                    sb.AppendLine(e.Date??"");
-                    sb.AppendLine(e.Time??"");
-                    sb.AppendLine(e.Source??"");
-                    sb.AppendLine((e.Query??"").Replace("\n","\\n").Replace("\r",""));
-                    sb.AppendLine((e.Result??"").Replace("\n","\\n").Replace("\r",""));
-                    sb.AppendLine(e.ImagePath??"");
+                    sb.AppendLine(e.Date ?? "");
+                    sb.AppendLine(e.Time ?? "");
+                    sb.AppendLine(e.Source ?? "");
+                    sb.AppendLine((e.Query ?? "").Replace("\n", "\\n").Replace("\r", ""));
+                    sb.AppendLine((e.Result ?? "").Replace("\n", "\\n").Replace("\r", ""));
+                    sb.AppendLine(e.ImagePath ?? "");
                 }
-                File.WriteAllText(HistoryPath,sb.ToString(),System.Text.Encoding.UTF8);
-            }catch(Exception ex){Logger.Error("HistoryStore.Save",ex);}
+                File.WriteAllText(HistoryPath, sb.ToString(), Encoding.UTF8);
+            } catch (Exception ex) { Logger.Error("HistoryStore.Save", ex); }
         }
-        public static List<HistoryEntry> Load(){
-            var list=new List<HistoryEntry>();
-            try{
-                if(!File.Exists(HistoryPath))return list;
-                string[] lines=File.ReadAllLines(HistoryPath,System.Text.Encoding.UTF8);
-                int i=0;
-                while(i<lines.Length){
-                    if(lines[i].Trim()==SEP){
-                        bool newFmt=i+6<lines.Length&&lines[i+1].Length==10&&lines[i+1].Contains("-");
-                        if(newFmt&&i+6<lines.Length){
-                            var entry=new HistoryEntry{
-                                Date=lines[i+1],Time=lines[i+2],Source=lines[i+3],
-                                Query=lines[i+4].Replace("\\n","\n"),
-                                Result=lines[i+5].Replace("\\n","\n"),
-                                ImagePath=lines[i+6].Trim()};
-                            if(!File.Exists(entry.ImagePath))entry.ImagePath=null;
-                            list.Add(entry);i+=7;continue;
-                        } else if(i+4<lines.Length){
-                            var entry=new HistoryEntry{
-                                Date=DateTime.Now.ToString("yyyy-MM-dd"),
-                                Time=lines[i+1],Source=lines[i+2],
-                                Query=lines[i+3].Replace("\\n","\n"),
-                                Result=lines[i+4].Replace("\\n","\n"),
-                                ImagePath=null};
-                            list.Add(entry);i+=5;continue;
+
+        public static List<HistoryEntry> Load() {
+            var list = new List<HistoryEntry>();
+            string readPath = HistoryPath;
+            if (!File.Exists(readPath) && File.Exists(OldHistoryPath)) {
+                readPath = OldHistoryPath;
+            }
+
+            try {
+                if (!File.Exists(readPath)) return list;
+                string[] lines = File.ReadAllLines(readPath, Encoding.UTF8);
+                int i = 0;
+                while (i < lines.Length) {
+                    if (lines[i].Trim() == SEP) {
+                        bool newFmt = i + 6 < lines.Length && lines[i + 1].Length == 10 && lines[i + 1].Contains("-");
+                        if (newFmt && i + 6 < lines.Length) {
+                            var entry = new HistoryEntry {
+                                Date = lines[i + 1], Time = lines[i + 2], Source = lines[i + 3],
+                                Query = lines[i + 4].Replace("\\n", "\n"),
+                                Result = lines[i + 5].Replace("\\n", "\n"),
+                                ImagePath = lines[i + 6].Trim() };
+                            if (!File.Exists(entry.ImagePath)) entry.ImagePath = null;
+                            list.Add(entry); i += 7; continue;
+                        } else if (i + 4 < lines.Length) {
+                            var entry = new HistoryEntry {
+                                Date = DateTime.Now.ToString("yyyy-MM-dd"),
+                                Time = lines[i + 1], Source = lines[i + 2],
+                                Query = lines[i + 3].Replace("\\n", "\n"),
+                                Result = lines[i + 4].Replace("\\n", "\n"),
+                                ImagePath = null };
+                            list.Add(entry); i += 5; continue;
                         }
                     }
                     i++;
                 }
-            }catch(Exception ex){Logger.Error("HistoryStore.Load",ex);}
+            } catch (Exception ex) { Logger.Error("HistoryStore.Load", ex); }
             return list;
         }
     }
 
     public class HistoryEntry {
-        public string Date{get;set;}
-        public string Time{get;set;}
-        public string Source{get;set;}
-        public string Query{get;set;}
-        public string Result{get;set;}
-        public string ImagePath{get;set;}
+        public string Date { get; set; }
+        public string Time { get; set; }
+        public string Source { get; set; }
+        public string Query { get; set; }
+        public string Result { get; set; }
+        public string ImagePath { get; set; }
     }
 
     public static class OcrHelper {
         public static string ExtractText(byte[] pngBytes) {
-            try{
-                string tmp=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"gamedict_ocr_in.png");
-                System.IO.File.WriteAllBytes(tmp,pngBytes);
-                string ps=
+            try {
+                string tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "omnidict_ocr_in.png");
+                System.IO.File.WriteAllBytes(tmp, pngBytes);
+                string ps =
                     "Add-Type -AssemblyName System.Runtime.WindowsRuntime; " +
                     "[void][Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]; " +
                     "[void][Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]; " +
                     "[void][Windows.Globalization.Language,Windows.Foundation,ContentType=WindowsRuntime]; " +
                     "function Aw($t){[System.WindowsRuntimeSystemExtensions]::GetAwaiter($t).GetResult()} " +
-                    "$f=Aw([Windows.Storage.StorageFile]::GetFileFromPathAsync('" + tmp.Replace("'","''") + "')); " +
+                    "$f=Aw([Windows.Storage.StorageFile]::GetFileFromPathAsync('" + tmp.Replace("'", "''") + "')); " +
                     "$s=Aw($f.OpenAsync([Windows.Storage.FileAccessMode]::Read)); " +
                     "$bmp=Aw([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($s)); " +
                     "$sb=Aw($bmp.GetSoftwareBitmapAsync()); " +
                     "$eng=[Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages(); " +
                     "if(-not $eng -and [Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages.Count -gt 0){$eng=[Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages[0])} " +
                     "$r=Aw($eng.RecognizeAsync($sb)); $r.Text";
-                var psi=new System.Diagnostics.ProcessStartInfo("powershell.exe","-NoProfile -NonInteractive -Command \"" + ps + "\""){
-                    RedirectStandardOutput=true,UseShellExecute=false,CreateNoWindow=true};
-                using(var proc=System.Diagnostics.Process.Start(psi)){
-                    string text=proc.StandardOutput.ReadToEnd();
+                var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe", "-NoProfile -NonInteractive -Command \"" + ps + "\"") {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+                using (var proc = System.Diagnostics.Process.Start(psi)) {
+                    string text = proc.StandardOutput.ReadToEnd();
                     proc.WaitForExit();
                     return text.Trim();
                 }
-            }catch(Exception ex){Logger.Error("OcrHelper",ex);return "";}
+            } catch (Exception ex) { Logger.Error("OcrHelper", ex); return ""; }
         }
     }
 
     public static class Logger {
-        private static readonly string LogPath=System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","gamedict.log");
-        private static readonly object _lock=new object();
-        static Logger(){try{Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LogPath));}catch{}}
-        public static void Info(string m){Write("INFO ",m);}
-        public static void Warn(string m){Write("WARN ",m);}
-        public static void Error(string m,Exception ex=null){
-            Write("ERROR",ex==null?m:m+" | "+ex.GetType().Name+": "+ex.Message+"\n"+ex.StackTrace);}
-        private static void Write(string lv,string m){
-            try{lock(_lock){
-                using(var fs=new FileStream(LogPath,FileMode.Append,FileAccess.Write,FileShare.ReadWrite))
-                using(var sw=new StreamWriter(fs,Encoding.UTF8))
-                    sw.Write(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" ["+lv+"] "+m+"\n");
-            }}catch{}}
+        private static readonly string LogPath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OmniDict", "omnidict.log");
+        private static readonly object _lock = new object();
+        static Logger() { try { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LogPath)); } catch {} }
+        public static void Info(string m) { Write("INFO ", m); }
+        public static void Warn(string m) { Write("WARN ", m); }
+        public static void Error(string m, Exception ex = null) {
+            Write("ERROR", ex == null ? m : m + " | " + ex.GetType().Name + ": " + ex.Message + "\n" + ex.StackTrace); }
+        private static void Write(string lv, string m) {
+            try {
+                lock (_lock) {
+                    using (var fs = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+                    using (var sw = new StreamWriter(fs, Encoding.UTF8))
+                        sw.Write(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + lv + "] " + m + "\n");
+                }
+            } catch {}
+        }
     }
 
 internal static class EmbeddedIcon {
