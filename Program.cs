@@ -1048,6 +1048,8 @@ namespace GameDictApp {
         private Border root;
         private Border cc;
         private Button close;
+        private Border altWTag;
+        private TextBlock altWText;
         public double LastX = -1;
         public double LastY = -1;
         public bool HasCustomPosition = false;
@@ -1096,10 +1098,23 @@ namespace GameDictApp {
                 HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};
             DockPanel.SetDock(bg,Dock.Left); h.Children.Add(bg);
 
+            StackPanel rightControls=new StackPanel{Orientation=Orientation.Horizontal};
+
+            altWTag=new Border{CornerRadius=new CornerRadius(4),
+                BorderThickness=new Thickness(1),Padding=new Thickness(6,2,6,2),
+                Margin=new Thickness(0,0,8,0),VerticalAlignment=VerticalAlignment.Center,Cursor=Cursors.Hand};
+            altWTag.MouseLeftButtonDown+=(s,e)=>this.Hide();
+            altWText=new TextBlock{Text="Alt+W",FontSize=10.5,FontWeight=FontWeights.Medium,
+                FontFamily=new FontFamily("Consolas, Segoe UI Variable Text, Segoe UI")};
+            altWTag.Child=altWText;
+            rightControls.Children.Add(altWTag);
+
             close=new Button{Content="✕",Width=26,Height=26,
                 BorderThickness=new Thickness(0),Cursor=Cursors.Hand,FontWeight=FontWeights.Bold};
             close.Click+=(s,e)=>this.Hide();
-            DockPanel.SetDock(close,Dock.Right); h.Children.Add(close);
+            rightControls.Children.Add(close);
+
+            DockPanel.SetDock(rightControls,Dock.Right); h.Children.Add(rightControls);
             Grid.SetRow(h,0); g.Children.Add(h);
 
             // Preview thumbnail
@@ -1141,6 +1156,12 @@ namespace GameDictApp {
 
             previewBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
             contentBox.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 235) : Color.FromRgb(25, 25, 30));
+
+            if(altWTag!=null){
+                altWTag.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 0, 103, 192) : Color.FromArgb(25, 0, 103, 192));
+                altWTag.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(90, 0, 103, 192) : Color.FromArgb(70, 0, 103, 192));
+                altWText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(140, 180, 240) : Color.FromRgb(0, 90, 180));
+            }
         }
 
         public void ShowLoading(double cursorX,double cursorY,byte[] imgBytes){
