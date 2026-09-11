@@ -840,7 +840,9 @@ namespace OmniDictApp {
         private TextBox TB, TK, CMBTEXT;
         private System.Windows.Controls.Primitives.Popup CMBPOPUP;
         private ListBox CMBLB;
-        private ComboBox presetCombo;
+        private TextBox PRESET_TEXT;
+        private System.Windows.Controls.Primitives.Popup PRESET_POPUP;
+        private ListBox PRESET_LB;
         private TextBox promptBox;
         private MainWindow M;
         private List<PromptPreset> localPresets = new List<PromptPreset>();
@@ -1016,24 +1018,77 @@ namespace OmniDictApp {
 
             // Row 1: Preset selector and management buttons
             DockPanel presetBar = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 4, 0, 8) };
-            presetCombo = new ComboBox {
-                Height = 30, Width = 200,
-                VerticalContentAlignment = VerticalAlignment.Center,
+
+            Grid presetGrid = new Grid { Height = 30, Width = 210 };
+            presetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            presetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            PRESET_TEXT = CreateWin11Input("", 0);
+            PRESET_TEXT.IsReadOnly = true;
+            PRESET_TEXT.Cursor = Cursors.Hand;
+            PRESET_TEXT.BorderThickness = new Thickness(1, 1, 0, 1);
+            PRESET_TEXT.Height = 30;
+            Grid.SetColumn(PRESET_TEXT, 0);
+            presetGrid.Children.Add(PRESET_TEXT);
+
+            Button presetArrowBtn = new Button {
+                Content = "▾", Width = 26, Height = 30,
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness = new Thickness(0, 1, 1, 1),
                 Cursor = Cursors.Hand };
+            Grid.SetColumn(presetArrowBtn, 1);
+            presetGrid.Children.Add(presetArrowBtn);
+
+            PRESET_LB = new ListBox {
+                Background = new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush = new SolidColorBrush(Win11Theme.BorderStrong),
+                BorderThickness = new Thickness(1), MaxHeight = 220 };
+            ScrollViewer.SetVerticalScrollBarVisibility(PRESET_LB, ScrollBarVisibility.Auto);
+            PRESET_LB.ItemContainerStyle = lbItemStyle;
+
+            PRESET_POPUP = new System.Windows.Controls.Primitives.Popup {
+                PlacementTarget = presetGrid, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                StaysOpen = false, Child = PRESET_LB };
+
+            Action togglePresetPopup = () => {
+                if (PRESET_LB.Items.Count > 0) {
+                    PRESET_POPUP.Width = presetGrid.ActualWidth + presetArrowBtn.ActualWidth;
+                    PRESET_POPUP.IsOpen = !PRESET_POPUP.IsOpen;
+                }
+            };
+            presetArrowBtn.Click += (s, e) => togglePresetPopup();
+            PRESET_TEXT.PreviewMouseLeftButtonDown += (s, e) => { togglePresetPopup(); e.Handled = true; };
 
             Action<string> SyncComboItems = null;
             SyncComboItems = (selectName) => {
-                presetCombo.Items.Clear();
-                foreach (var p in localPresets) presetCombo.Items.Add(p.Name);
-                if (selectName != null && presetCombo.Items.Contains(selectName)) {
-                    presetCombo.SelectedItem = selectName;
-                } else if (presetCombo.Items.Count > 0) {
-                    presetCombo.SelectedIndex = 0;
+                PRESET_LB.Items.Clear();
+                foreach (var p in localPresets) PRESET_LB.Items.Add(p.Name);
+                if (selectName != null && PRESET_LB.Items.Contains(selectName)) {
+                    PRESET_LB.SelectedItem = selectName;
+                    PRESET_TEXT.Text = selectName;
+                } else if (PRESET_LB.Items.Count > 0) {
+                    PRESET_LB.SelectedIndex = 0;
+                    PRESET_TEXT.Text = PRESET_LB.Items[0].ToString();
+                } else {
+                    PRESET_TEXT.Text = "";
                 }
             };
 
-            DockPanel.SetDock(presetCombo, Dock.Left);
-            presetBar.Children.Add(presetCombo);
+            PRESET_LB.SelectionChanged += (s, e) => {
+                if (PRESET_LB.SelectedItem != null) {
+                    string selName = PRESET_LB.SelectedItem.ToString();
+                    PRESET_TEXT.Text = selName;
+                    PRESET_POPUP.IsOpen = false;
+                    var p = localPresets.Find(x => x.Name == selName);
+                    if (p != null) promptBox.Text = p.Content;
+                }
+            };
+
+            DockPanel.SetDock(presetGrid, Dock.Left);
+            presetBar.Children.Add(presetGrid);
 
             StackPanel presetBtnBar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
             Button addPresetBtn = new Button { Content = "新建预设", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
@@ -1050,8 +1105,8 @@ namespace OmniDictApp {
             Button renamePresetBtn = new Button { Content = "重命名", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
             renamePresetBtn.Style = Win11Theme.CreateButtonStyle(false);
             renamePresetBtn.Click += (s, e) => {
-                if (presetCombo.SelectedItem == null) return;
-                string curName = presetCombo.SelectedItem.ToString();
+                if (string.IsNullOrEmpty(PRESET_TEXT.Text)) return;
+                string curName = PRESET_TEXT.Text;
                 var p = localPresets.Find(x => x.Name == curName);
                 if (p == null) return;
 
@@ -1100,12 +1155,12 @@ namespace OmniDictApp {
             Button delPresetBtn = new Button { Content = "删除预设", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
             delPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
             delPresetBtn.Click += (s, e) => {
-                if (presetCombo.SelectedItem == null) return;
+                if (string.IsNullOrEmpty(PRESET_TEXT.Text)) return;
                 if (localPresets.Count <= 1) {
                     MessageBox.Show("至少需要保留一个预设！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
-                string curName = presetCombo.SelectedItem.ToString();
+                string curName = PRESET_TEXT.Text;
                 localPresets.RemoveAll(x => x.Name == curName);
                 SyncComboItems(null);
             };
@@ -1148,17 +1203,9 @@ namespace OmniDictApp {
                 FontSize = 12 };
             cardPreset.Children.Add(promptBox);
 
-            presetCombo.SelectionChanged += (s, e) => {
-                if (presetCombo.SelectedItem != null) {
-                    string selName = presetCombo.SelectedItem.ToString();
-                    var p = localPresets.Find(x => x.Name == selName);
-                    if (p != null) promptBox.Text = p.Content;
-                }
-            };
-
             promptBox.TextChanged += (s, e) => {
-                if (presetCombo.SelectedItem != null) {
-                    string selName = presetCombo.SelectedItem.ToString();
+                if (!string.IsNullOrEmpty(PRESET_TEXT.Text)) {
+                    string selName = PRESET_TEXT.Text;
                     var p = localPresets.Find(x => x.Name == selName);
                     if (p != null) p.Content = promptBox.Text;
                 }
@@ -1227,8 +1274,8 @@ namespace OmniDictApp {
                 M.apiKey = TK.Text.Trim();
                 M.currentModel = CMBTEXT.Text.Trim();
                 M.useVision = visionChk.IsChecked == true;
-                if (presetCombo.SelectedItem != null) {
-                    M.currentPresetName = presetCombo.SelectedItem.ToString();
+                if (!string.IsNullOrEmpty(PRESET_TEXT.Text)) {
+                    M.currentPresetName = PRESET_TEXT.Text;
                 }
                 M.promptPresets = localPresets;
 
