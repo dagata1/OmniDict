@@ -8,3 +8,11 @@ gamedict.toml
 gamedict.log
 history.dat
 images/
+
+# Temporary / test build scripts
+*.py
+*.b64
+*.txt
+main.go
+go.mod
+go.sum
