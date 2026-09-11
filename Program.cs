@@ -875,11 +875,24 @@ namespace GameDictApp {
         public double LastX = -1;
         public double LastY = -1;
         public bool HasCustomPosition = false;
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        private const int SW_SHOWNOACTIVATE = 4;
+
         public FloatingResultWindow() {
             this.Title="GameDict Float"; this.Width=420; this.Height=520;
             this.WindowStyle=WindowStyle.None; this.AllowsTransparency=true;
             this.Background=Brushes.Transparent; this.Topmost=true;
             this.ShowInTaskbar=false; this.ResizeMode=ResizeMode.NoResize;
+            this.Focusable=false;
+            this.SourceInitialized += (s, e) => {
+                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
+                SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
+            };
             Border root=new Border{CornerRadius=new CornerRadius(12),
                 Background=new SolidColorBrush(Color.FromArgb(170,12,12,16)),
                 BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
@@ -961,7 +974,11 @@ namespace GameDictApp {
                 }catch{previewBorder.Visibility=Visibility.Collapsed;}
             }else{previewBorder.Visibility=Visibility.Collapsed;}
             SetRichText("\u231b \u6b63\u5728\u8bc6\u522b\u4e2d...");
-            this.Show(); this.Activate();
+            this.Show();
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if(handle != IntPtr.Zero){
+                ShowWindow(handle, SW_SHOWNOACTIVATE);
+            }
         }
         public void ShowResult(string text){SetRichText(text);}
         private void SetRichText(string raw){
