@@ -268,9 +268,7 @@ namespace GameDictApp {
         private Border listContainer;
         private Button mainSetBtn;
         private Button mainClearBtn;
-        private Border mainHkTag;
-        private TextBlock mainHkText;
-        private TextBlock mainHintText;
+
         private Button mainCloseBtn;
 
         private void InitUI() {
@@ -308,14 +306,6 @@ namespace GameDictApp {
                 Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
             mainSetBtn.Click+=(s,e)=>{var d=new SettingsDialog(this);d.Owner=this;d.ShowDialog();};
             right.Children.Add(mainSetBtn);
-
-            mainHkTag=new Border{CornerRadius=new CornerRadius(4),
-                BorderThickness=new Thickness(1),Padding=new Thickness(6,2,6,2),
-                Margin=new Thickness(0,0,8,0),VerticalAlignment=VerticalAlignment.Center};
-            mainHkText=new TextBlock{Text="Alt+Q",FontSize=11,
-                FontFamily=new FontFamily("Consolas, Segoe UI Variable Text, Segoe UI")};
-            mainHkTag.Child=mainHkText;
-            right.Children.Add(mainHkTag);
 
             mainCloseBtn=new Button{Content="✕",Width=28,Height=26,Background=Brushes.Transparent,
                 BorderThickness=new Thickness(0),Cursor=Cursors.Hand,FontWeight=FontWeights.Normal,FontSize=12};
@@ -359,8 +349,6 @@ namespace GameDictApp {
             DockPanel footer=new DockPanel{LastChildFill=false,Margin=new Thickness(0,8,0,0)};
             statusText=new TextBlock{Text="模型: "+currentModel,FontSize=11};
             DockPanel.SetDock(statusText,Dock.Left); footer.Children.Add(statusText);
-            mainHintText=new TextBlock{Text="Alt+Q 截图  |  Alt+W 关闭浮窗",FontSize=11};
-            DockPanel.SetDock(mainHintText,Dock.Right); footer.Children.Add(mainHintText);
             Grid.SetRow(footer,3); g.Children.Add(footer);
 
             rootBorder.Child=g; this.Content=rootBorder;
@@ -377,16 +365,11 @@ namespace GameDictApp {
             mainSetBtn.Style = Win11Theme.CreateButtonStyle(false);
             mainClearBtn.Style = Win11Theme.CreateButtonStyle(false);
             
-            mainHkTag.Background = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(40, 0, 103, 192) : Color.FromArgb(25, 0, 103, 192));
-            mainHkTag.BorderBrush = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(90, 0, 103, 192) : Color.FromArgb(70, 0, 103, 192));
-            mainHkText.Foreground = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(140, 180, 240) : Color.FromRgb(0, 90, 180));
-            
             mainCloseBtn.Foreground = new SolidColorBrush(Win11Theme.FgSecondary);
             listContainer.Background = new SolidColorBrush(Win11Theme.BgSurface);
             listContainer.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
             
             statusText.Foreground = new SolidColorBrush(Win11Theme.FgTertiary);
-            mainHintText.Foreground = new SolidColorBrush(Win11Theme.FgTertiary);
 
             // Refresh cards
             RefreshAllCards();
