@@ -91,8 +91,9 @@ namespace GameDictApp {
     public class MainWindow : Window {
         private const int  HOTKEY_ID_CTRL_T = 9001;
         private const int  HOTKEY_ID_ALT_Q  = 9002;
+        private const int  HOTKEY_ID_ALT_W  = 9003;
         private const uint MOD_ALT=0x0001,MOD_CONTROL=0x0002,MOD_NOREPEAT=0x4000;
-        private const uint VK_T=0x54,VK_Q=0x51;
+        private const uint VK_T=0x54,VK_Q=0x51,VK_W=0x57;
         private const int  WM_HOTKEY=0x0312;
         [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd,int id,uint fsModifiers,uint vk);
         [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd,int id);
@@ -256,7 +257,7 @@ namespace GameDictApp {
             statusText=new TextBlock{Text="\u6a21\u578b: "+currentModel,FontSize=11,
                 Foreground=new SolidColorBrush(Color.FromRgb(90,90,110))};
             DockPanel.SetDock(statusText,Dock.Left); footer.Children.Add(statusText);
-            TextBlock hintTb=new TextBlock{Text="Ctrl+T \u622a\u5c4f  |  \u70b9\u51fb\u6761\u76ee\u67e5\u770b\u8be6\u60c5",
+            TextBlock hintTb=new TextBlock{Text="Alt+Q \u622a\u5c4f  |  Alt+W \u5173\u95ed\u6d6e\u7a97",
                 FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(90,90,110))};
             DockPanel.SetDock(hintTb,Dock.Right); footer.Children.Add(hintTb);
             Grid.SetRow(footer,3); g.Children.Add(footer);
@@ -290,6 +291,9 @@ namespace GameDictApp {
             bool ok2=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_Q,MOD_ALT|MOD_NOREPEAT,VK_Q);
             if(!ok2) ok2=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_Q,MOD_ALT,VK_Q);
             Logger.Info("Alt+Q:"+(ok2?"OK":"FAIL"));
+            bool ok3=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_W,MOD_ALT|MOD_NOREPEAT,VK_W);
+            if(!ok3) ok3=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_W,MOD_ALT,VK_W);
+            Logger.Info("Alt+W:"+(ok3?"OK":"FAIL"));
         }
 
         private bool isRealExit=false;
@@ -297,13 +301,25 @@ namespace GameDictApp {
             if(!isRealExit){e.Cancel=true;this.Hide();return;}
             if(trayIcon!=null){trayIcon.Visible=false;trayIcon.Dispose();}
             UnregisterHotKey(windowHandle,HOTKEY_ID_ALT_Q);
+            UnregisterHotKey(windowHandle,HOTKEY_ID_ALT_W);
             HistoryStore.Save(historyItems);
             Logger.Info("History saved, count="+historyItems.Count);
         }
 
         private IntPtr HwndHook(IntPtr hwnd,int msg,IntPtr wParam,IntPtr lParam,ref bool handled) {
             if(msg==WM_HOTKEY){int id=wParam.ToInt32();
-                if(id==HOTKEY_ID_ALT_Q){Logger.Info("Hotkey id="+id);TriggerSnipAndAnalyze();handled=true;}}
+                if(id==HOTKEY_ID_ALT_Q){
+                    Logger.Info("Hotkey id="+id);
+                    TriggerSnipAndAnalyze();
+                    handled=true;
+                } else if(id==HOTKEY_ID_ALT_W){
+                    Logger.Info("Hotkey close float id="+id);
+                    if(floatingWin!=null && floatingWin.IsVisible){
+                        floatingWin.Hide();
+                    }
+                    handled=true;
+                }
+            }
             return IntPtr.Zero;
         }
 
