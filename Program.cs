@@ -978,7 +978,8 @@ namespace GameDictApp {
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
                 BorderThickness=new Thickness(1),
                 Padding=new Thickness(16,8,16,8),
-                Margin=new Thickness(0,0,0,6)};
+                Margin=new Thickness(0,0,0,6),
+                Child=content};
         }
 
         private Grid CreateSettingsRow(string header, string description, UIElement actionWidget) {
