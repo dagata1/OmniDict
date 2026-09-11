@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -7,11 +7,15 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace GameDictApp {
     public class Program {
@@ -33,14 +37,119 @@ namespace GameDictApp {
             catch(Exception ex){try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+ex.ToString()+"\n",System.Text.Encoding.UTF8);}catch{}}
         }
     }
+
     public class App : Application {
         protected override void OnStartup(StartupEventArgs e) { base.OnStartup(e); }
     }
+
+    // Windows 11 Native Theme & DWM Helper
+    public static class Win11Theme {
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+        public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+        public const int DWMWCP_ROUND = 2;
+
+        public static bool IsDarkTheme { get; private set; }
+        public static event Action ThemeChanged;
+
+        static Win11Theme() {
+            DetectTheme();
+            try {
+                SystemEvents.UserPreferenceChanged += (s, e) => {
+                    bool old = IsDarkTheme;
+                    DetectTheme();
+                    if (old != IsDarkTheme && ThemeChanged != null) {
+                        ThemeChanged();
+                    }
+                };
+            } catch {}
+        }
+
+        public static void DetectTheme() {
+            try {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")) {
+                    if (key != null) {
+                        object val = key.GetValue("AppsUseLightTheme");
+                        if (val is int) {
+                            IsDarkTheme = ((int)val) == 0;
+                            return;
+                        }
+                    }
+                }
+            } catch {}
+            IsDarkTheme = true; // default dark
+        }
+
+        public static void ApplyToWindow(Window window) {
+            try {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                if (hwnd == IntPtr.Zero) return;
+                int dark = IsDarkTheme ? 1 : 0;
+                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+                int corner = DWMWCP_ROUND;
+                DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
+            } catch {}
+        }
+
+        // Color palettes (C# 5 compatible getters)
+        public static Color BgWindow { get { return IsDarkTheme ? Color.FromRgb(20, 20, 20) : Color.FromRgb(243, 243, 243); } }
+        public static Color BgSurface { get { return IsDarkTheme ? Color.FromRgb(32, 32, 32) : Color.FromRgb(255, 255, 255); } }
+        public static Color BgCard { get { return IsDarkTheme ? Color.FromRgb(40, 40, 40) : Color.FromRgb(255, 255, 255); } }
+        public static Color BgHover { get { return IsDarkTheme ? Color.FromRgb(50, 50, 50) : Color.FromRgb(235, 235, 235); } }
+        public static Color FgPrimary { get { return IsDarkTheme ? Color.FromRgb(240, 240, 240) : Color.FromRgb(25, 25, 25); } }
+        public static Color FgSecondary { get { return IsDarkTheme ? Color.FromRgb(160, 160, 160) : Color.FromRgb(95, 95, 95); } }
+        public static Color FgTertiary { get { return IsDarkTheme ? Color.FromRgb(110, 110, 110) : Color.FromRgb(140, 140, 140); } }
+        public static Color BorderSubtle { get { return IsDarkTheme ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(40, 0, 0, 0); } }
+        public static Color BorderStrong { get { return IsDarkTheme ? Color.FromArgb(70, 255, 255, 255) : Color.FromArgb(70, 0, 0, 0); } }
+        public static Color Accent { get { return Color.FromRgb(0, 103, 192); } }
+        public static Color AccentHover { get { return Color.FromRgb(24, 120, 210); } }
+
+        public static Style CreateButtonStyle(bool isPrimary = false) {
+            var style = new Style(typeof(Button));
+            style.Setters.Add(new Setter(Button.CursorProperty, Cursors.Hand));
+            style.Setters.Add(new Setter(Button.FontSizeProperty, 12.0));
+            style.Setters.Add(new Setter(Button.FontFamilyProperty, new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")));
+
+            string xaml;
+            if (isPrimary) {
+                xaml = "<ControlTemplate xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" TargetType=\"Button\">" +
+                       "  <Border Name=\"bd\" CornerRadius=\"4\" Background=\"#FF0067C0\" BorderThickness=\"0\" Padding=\"{TemplateBinding Padding}\">" +
+                       "    <ContentPresenter HorizontalAlignment=\"Center\" VerticalAlignment=\"Center\"/>" +
+                       "  </Border>" +
+                       "  <ControlTemplate.Triggers>" +
+                       "    <Trigger Property=\"IsMouseOver\" Value=\"True\"><Setter TargetName=\"bd\" Property=\"Background\" Value=\"#FF1878D2\"/></Trigger>" +
+                       "    <Trigger Property=\"IsPressed\" Value=\"True\"><Setter TargetName=\"bd\" Property=\"Background\" Value=\"#FF005BB5\"/></Trigger>" +
+                       "    <Trigger Property=\"IsEnabled\" Value=\"False\"><Setter TargetName=\"bd\" Property=\"Opacity\" Value=\"0.4\"/></Trigger>" +
+                       "  </ControlTemplate.Triggers>" +
+                       "</ControlTemplate>";
+                style.Setters.Add(new Setter(Button.ForegroundProperty, Brushes.White));
+            } else {
+                string bg = IsDarkTheme ? "#2A2A2A" : "#FAFAFA";
+                string bgh = IsDarkTheme ? "#383838" : "#EBEBEB";
+                string bgp = IsDarkTheme ? "#222222" : "#E0E0E0";
+                string border = IsDarkTheme ? "#33FFFFFF" : "#33000000";
+                xaml = "<ControlTemplate xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" TargetType=\"Button\">" +
+                       "  <Border Name=\"bd\" CornerRadius=\"4\" Background=\"" + bg + "\" BorderBrush=\"" + border + "\" BorderThickness=\"1\" Padding=\"{TemplateBinding Padding}\">" +
+                       "    <ContentPresenter HorizontalAlignment=\"Center\" VerticalAlignment=\"Center\"/>" +
+                       "  </Border>" +
+                       "  <ControlTemplate.Triggers>" +
+                       "    <Trigger Property=\"IsMouseOver\" Value=\"True\"><Setter TargetName=\"bd\" Property=\"Background\" Value=\"" + bgh + "\"/></Trigger>" +
+                       "    <Trigger Property=\"IsPressed\" Value=\"True\"><Setter TargetName=\"bd\" Property=\"Background\" Value=\"" + bgp + "\"/></Trigger>" +
+                       "    <Trigger Property=\"IsEnabled\" Value=\"False\"><Setter TargetName=\"bd\" Property=\"Opacity\" Value=\"0.4\"/></Trigger>" +
+                       "  </ControlTemplate.Triggers>" +
+                       "</ControlTemplate>";
+                style.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(FgPrimary)));
+            }
+            style.Setters.Add(new Setter(Button.TemplateProperty, (ControlTemplate)System.Windows.Markup.XamlReader.Parse(xaml)));
+            return style;
+        }
+    }
+
     // Standalone config: %APPDATA%\GameDict\gamedict.toml
     public static class GameDictConfig {
         public static readonly string ConfigPath=System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","gamedict.toml");
-        // Load from standalone config; returns false if file doesn't exist
         public static bool Load(out string apiBase,out string apiKey,out string model,out string useVision,out double floatX,out double floatY){
             apiBase=null;apiKey=null;model=null;useVision=null;floatX=-1;floatY=-1;
             try{
@@ -116,23 +225,22 @@ namespace GameDictApp {
             LoadCodexConfig(); Logger.Info("Config model="+currentModel);
             InitUI(); InitTray();
             floatingWin=new FloatingResultWindow();
-            // 如果已读取到历史位置，设置给 floatingWin
             string _b,_k,_m,_v; double _fx,_fy;
             if(GameDictConfig.Load(out _b,out _k,out _m,out _v,out _fx,out _fy)){
                 if(_fx>=0&&_fy>=0){floatingWin.LastX=_fx;floatingWin.LastY=_fy;floatingWin.HasCustomPosition=true;}
             }
             this.Loaded+=MainWindow_Loaded; this.Hide(); this.Closing+=MainWindow_Closing;
+            Win11Theme.ThemeChanged += () => this.Dispatcher.Invoke(ApplyTheme);
+            
             // Restore history
             var saved=HistoryStore.Load();
-            // Newest saved entry should appear at top — load in reverse
             for(int _i=saved.Count-1;_i>=0;_i--){var he=saved[_i];historyItems.Insert(0,he);RebuildHistoryItem(he);}
             if(historyItems.Count>0)this.Dispatcher.BeginInvoke(new System.Action(()=>{
-                if(statusText!=null)statusText.Text="\u5386\u53f2: "+historyItems.Count+" \u6761";
+                if(statusText!=null)statusText.Text="历史: "+historyItems.Count+" 条";
             }));
         }
 
         public void LoadCodexConfig() {
-            // 1. Try standalone GameDict config first
             string sb2,sk2,sm2,sv2; double fx,fy;
             if(GameDictConfig.Load(out sb2,out sk2,out sm2,out sv2,out fx,out fy)){
                 if(!string.IsNullOrEmpty(sb2))apiBase=sb2;
@@ -143,7 +251,6 @@ namespace GameDictApp {
                 Logger.Info("Loaded from "+GameDictConfig.ConfigPath);
                 return;
             }
-            // 2. Fallback: read ~/.codex/config.toml
             try {
                 string cfgPath=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".codex","config.toml");
                 if(!File.Exists(cfgPath)) return;
@@ -156,6 +263,16 @@ namespace GameDictApp {
                 Logger.Info("Loaded from ~/.codex/config.toml");
             } catch(Exception ex) { Logger.Error("LoadCodexConfig",ex); }
         }
+
+        private TextBlock titleText;
+        private Border listContainer;
+        private Button mainSetBtn;
+        private Button mainClearBtn;
+        private Border mainHkTag;
+        private TextBlock mainHkText;
+        private TextBlock mainHintText;
+        private Button mainCloseBtn;
+
         private void InitUI() {
             this.Title="GameDict AI"; this.Width=480; this.Height=560;
             this.WindowStartupLocation=WindowStartupLocation.CenterScreen;
@@ -163,79 +280,67 @@ namespace GameDictApp {
             this.Background=Brushes.Transparent; this.Topmost=false;
 
             rootBorder=new Border { CornerRadius=new CornerRadius(12),
-                Background=new SolidColorBrush(Color.FromRgb(0,0,0)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
                 BorderThickness=new Thickness(1), Margin=new Thickness(10) };
-            rootBorder.Effect=new DropShadowEffect{BlurRadius=18,Color=Colors.Black,Opacity=0.7,ShadowDepth=4,Direction=270};
+            rootBorder.Effect=new DropShadowEffect{BlurRadius=20,Color=Colors.Black,Opacity=0.35,ShadowDepth=4,Direction=270};
             rootBorder.MouseLeftButtonDown+=(s,e)=>{ if(e.LeftButton==MouseButtonState.Pressed) try{this.DragMove();}catch{} };
 
-            Grid g=new Grid{Margin=new Thickness(14,10,14,10)};
+            Grid g=new Grid{Margin=new Thickness(16,12,16,12)};
             g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
             g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
 
             // Header
-            DockPanel header=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
+            DockPanel header=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
             StackPanel left=new StackPanel{Orientation=Orientation.Horizontal};
             Border badge=new Border{Width=24,Height=24,CornerRadius=new CornerRadius(6),
-                Background=new SolidColorBrush(Color.FromRgb(99,102,241)),Margin=new Thickness(0,0,8,0)};
+                Background=new SolidColorBrush(Color.FromRgb(0,103,192)),Margin=new Thickness(0,0,8,0)};
             badge.Child=new TextBlock{Text="G",Foreground=Brushes.White,FontWeight=FontWeights.Bold,
                 HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,FontSize=12};
             left.Children.Add(badge);
-            left.Children.Add(new TextBlock{Text="GameDict AI",FontWeight=FontWeights.SemiBold,FontSize=14,
-                Foreground=new SolidColorBrush(Color.FromRgb(230,230,230)),VerticalAlignment=VerticalAlignment.Center});
+            titleText=new TextBlock{Text="GameDict AI",FontWeight=FontWeights.SemiBold,FontSize=14,
+                VerticalAlignment=VerticalAlignment.Center};
+            left.Children.Add(titleText);
             DockPanel.SetDock(left,Dock.Left); header.Children.Add(left);
 
             StackPanel right=new StackPanel{Orientation=Orientation.Horizontal};
-            Button setBtn=new Button{Content="Settings",Height=24,Padding=new Thickness(8,0,8,0),
-                Background=new SolidColorBrush(Color.FromRgb(20,20,20)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                Foreground=new SolidColorBrush(Color.FromRgb(170,170,185)),
-                BorderThickness=new Thickness(1),Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
-            setBtn.Click+=(s,e)=>{var d=new SettingsDialog(this);d.Owner=this;d.ShowDialog();};
-            right.Children.Add(setBtn);
-            Border hkTag=new Border{CornerRadius=new CornerRadius(4),
-                Background=new SolidColorBrush(Color.FromArgb(20,99,102,241)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(60,99,102,241)),
+            mainSetBtn=new Button{Content="设置",Height=26,Padding=new Thickness(10,0,10,0),
+                Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
+            mainSetBtn.Click+=(s,e)=>{var d=new SettingsDialog(this);d.Owner=this;d.ShowDialog();};
+            right.Children.Add(mainSetBtn);
+
+            mainHkTag=new Border{CornerRadius=new CornerRadius(4),
                 BorderThickness=new Thickness(1),Padding=new Thickness(6,2,6,2),
                 Margin=new Thickness(0,0,8,0),VerticalAlignment=VerticalAlignment.Center};
-            hkTag.Child=new TextBlock{Text="Alt+Q",FontSize=11,
-                FontFamily=new FontFamily("Consolas, Segoe UI Mono"),
-                Foreground=new SolidColorBrush(Color.FromRgb(130,130,190))};
-            right.Children.Add(hkTag);
-            Button closeBtn=new Button{Content="\u2715",Width=26,Height=26,Background=Brushes.Transparent,
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,
-                Foreground=new SolidColorBrush(Color.FromRgb(110,110,125)),FontWeight=FontWeights.Bold};
-            closeBtn.Click+=(s,e)=>this.Hide();
-            right.Children.Add(closeBtn);
+            mainHkText=new TextBlock{Text="Alt+Q",FontSize=11,
+                FontFamily=new FontFamily("Consolas, Segoe UI Variable Text, Segoe UI")};
+            mainHkTag.Child=mainHkText;
+            right.Children.Add(mainHkTag);
+
+            mainCloseBtn=new Button{Content="✕",Width=28,Height=26,Background=Brushes.Transparent,
+                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,FontWeight=FontWeights.Normal,FontSize=12};
+            mainCloseBtn.Click+=(s,e)=>this.Hide();
+            right.Children.Add(mainCloseBtn);
             DockPanel.SetDock(right,Dock.Right); header.Children.Add(right);
             Grid.SetRow(header,0); g.Children.Add(header);
 
             // Toolbar
-            DockPanel toolbar=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,8)};
-            Button snipBtn=new Button{Content="\u622a\u5c4f\u67e5\u8bcd  (Ctrl+T)",Height=30,Padding=new Thickness(14,0,14,0),
-                Background=new LinearGradientBrush(Color.FromRgb(59,130,246),Color.FromRgb(99,102,241),0),
-                Foreground=Brushes.White,FontWeight=FontWeights.SemiBold,
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
+            DockPanel toolbar=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
+            Button snipBtn=new Button{Content="截图查词 (Alt+Q)",Height=32,Padding=new Thickness(16,0,16,0),
+                Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
+            snipBtn.Style=Win11Theme.CreateButtonStyle(true);
             snipBtn.Click+=(s,e)=>TriggerSnipAndAnalyze();
             DockPanel.SetDock(snipBtn,Dock.Left); toolbar.Children.Add(snipBtn);
-            Button clearBtn=new Button{Content="\u6e05\u7a7a\u5386\u53f2",Height=30,Padding=new Thickness(12,0,12,0),
-                Background=new SolidColorBrush(Color.FromRgb(20,20,20)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                Foreground=new SolidColorBrush(Color.FromRgb(190,190,205)),
-                BorderThickness=new Thickness(1),Cursor=Cursors.Hand};
-            clearBtn.Click+=(s,e)=>{historyItems.Clear();historyList.Items.Clear();statusText.Text="\u5386\u53f2\u5df2\u6e05\u7a7a";HistoryStore.Save(historyItems);};
-            DockPanel.SetDock(clearBtn,Dock.Left); toolbar.Children.Add(clearBtn);
+
+            mainClearBtn=new Button{Content="清空历史",Height=32,Padding=new Thickness(14,0,14,0),Cursor=Cursors.Hand};
+            mainClearBtn.Click+=(s,e)=>{historyItems.Clear();historyList.Items.Clear();statusText.Text="历史已清空";HistoryStore.Save(historyItems);};
+            DockPanel.SetDock(mainClearBtn,Dock.Left); toolbar.Children.Add(mainClearBtn);
             Grid.SetRow(toolbar,1); g.Children.Add(toolbar);
 
             // History ListBox
             historyList=new ListBox{Background=Brushes.Transparent,BorderThickness=new Thickness(0),
                 Padding=new Thickness(0)};
             ScrollViewer.SetHorizontalScrollBarVisibility(historyList,ScrollBarVisibility.Disabled);
-            historyList.Resources.Add(SystemColors.HighlightBrushKey,new SolidColorBrush(Color.FromArgb(60,99,102,241)));
-            historyList.Resources.Add(SystemColors.HighlightTextBrushKey,new SolidColorBrush(Color.FromRgb(230,230,230)));
-            historyList.Resources.Add(SystemColors.InactiveSelectionHighlightBrushKey,new SolidColorBrush(Color.FromArgb(30,99,102,241)));
             historyList.SelectionChanged+=(s,e)=>{
                 if(historyList.SelectedIndex<0) return;
                 int ri=historyItems.Count-1-historyList.SelectedIndex;
@@ -246,25 +351,54 @@ namespace GameDictApp {
             ScrollViewer sv=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
             sv.Content=historyList;
-            Border lb=new Border{CornerRadius=new CornerRadius(8),
-                Background=new SolidColorBrush(Color.FromRgb(10,10,10)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
+            listContainer=new Border{CornerRadius=new CornerRadius(8),
                 BorderThickness=new Thickness(1),Padding=new Thickness(4)};
-            lb.Child=sv; Grid.SetRow(lb,2); g.Children.Add(lb);
+            listContainer.Child=sv; Grid.SetRow(listContainer,2); g.Children.Add(listContainer);
 
             // Footer
             DockPanel footer=new DockPanel{LastChildFill=false,Margin=new Thickness(0,8,0,0)};
-            statusText=new TextBlock{Text="\u6a21\u578b: "+currentModel,FontSize=11,
-                Foreground=new SolidColorBrush(Color.FromRgb(90,90,110))};
+            statusText=new TextBlock{Text="模型: "+currentModel,FontSize=11};
             DockPanel.SetDock(statusText,Dock.Left); footer.Children.Add(statusText);
-            TextBlock hintTb=new TextBlock{Text="Alt+Q \u622a\u5c4f  |  Alt+W \u5173\u95ed\u6d6e\u7a97",
-                FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(90,90,110))};
-            DockPanel.SetDock(hintTb,Dock.Right); footer.Children.Add(hintTb);
+            mainHintText=new TextBlock{Text="Alt+Q 截图  |  Alt+W 关闭浮窗",FontSize=11};
+            DockPanel.SetDock(mainHintText,Dock.Right); footer.Children.Add(mainHintText);
             Grid.SetRow(footer,3); g.Children.Add(footer);
 
             rootBorder.Child=g; this.Content=rootBorder;
             this.KeyDown+=(s,e)=>{ if(e.Key==Key.Escape) this.Hide(); };
+
+            ApplyTheme();
         }
+
+        public void ApplyTheme() {
+            rootBorder.Background = new SolidColorBrush(Win11Theme.BgWindow);
+            rootBorder.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
+            titleText.Foreground = new SolidColorBrush(Win11Theme.FgPrimary);
+            
+            mainSetBtn.Style = Win11Theme.CreateButtonStyle(false);
+            mainClearBtn.Style = Win11Theme.CreateButtonStyle(false);
+            
+            mainHkTag.Background = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(40, 0, 103, 192) : Color.FromArgb(25, 0, 103, 192));
+            mainHkTag.BorderBrush = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(90, 0, 103, 192) : Color.FromArgb(70, 0, 103, 192));
+            mainHkText.Foreground = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(140, 180, 240) : Color.FromRgb(0, 90, 180));
+            
+            mainCloseBtn.Foreground = new SolidColorBrush(Win11Theme.FgSecondary);
+            listContainer.Background = new SolidColorBrush(Win11Theme.BgSurface);
+            listContainer.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
+            
+            statusText.Foreground = new SolidColorBrush(Win11Theme.FgTertiary);
+            mainHintText.Foreground = new SolidColorBrush(Win11Theme.FgTertiary);
+
+            // Refresh cards
+            RefreshAllCards();
+        }
+
+        private void RefreshAllCards() {
+            historyList.Items.Clear();
+            for(int _i=historyItems.Count-1;_i>=0;_i--){
+                RebuildHistoryItem(historyItems[_i]);
+            }
+        }
+
         private void InitTray() {
             trayIcon=new System.Windows.Forms.NotifyIcon();
             try{byte[] _tb=Convert.FromBase64String(EmbeddedIcon.IcoB64);using(var _tms=new System.IO.MemoryStream(_tb)){trayIcon.Icon=new System.Drawing.Icon(_tms);}}
@@ -272,15 +406,15 @@ namespace GameDictApp {
             trayIcon.Text="GameDict AI"; trayIcon.Visible=true;
             trayIcon.DoubleClick+=(s,e)=>{this.Show();this.Activate();};
             var menu=new System.Windows.Forms.ContextMenuStrip();
-            var m1=new System.Windows.Forms.ToolStripMenuItem("\u5386\u53f2\u8bb0\u5f55");
+            var m1=new System.Windows.Forms.ToolStripMenuItem("历史记录");
             m1.Click+=(s,e)=>{this.Show();this.Activate();};
-            var m2=new System.Windows.Forms.ToolStripMenuItem("\u622a\u5c4f\u67e5\u8bcd (Ctrl+T)");
+            var m2=new System.Windows.Forms.ToolStripMenuItem("截图翻译 (Alt+Q)");
             m2.Click+=(s,e)=>TriggerSnipAndAnalyze();
-            var m3=new System.Windows.Forms.ToolStripMenuItem("Settings");
+            var m3=new System.Windows.Forms.ToolStripMenuItem("设置");
             m3.Click+=(s,e)=>{this.Show();this.Activate();new SettingsDialog(this){Owner=this}.ShowDialog();};
-            var m4=new System.Windows.Forms.ToolStripMenuItem("\u9000\u51fa");
-            m4.Click+=(s,e)=>{isRealExit=true;this.Close();};
-            menu.Items.AddRange(new System.Windows.Forms.ToolStripItem[]{m1,m2,new System.Windows.Forms.ToolStripSeparator(),m3,new System.Windows.Forms.ToolStripSeparator(),m4});
+            var m4=new System.Windows.Forms.ToolStripMenuItem("退出");
+            m4.Click+=(s,e)=>{isRealExit=true;this.Close();System.Windows.Application.Current.Shutdown();};
+            menu.Items.AddRange(new System.Windows.Forms.ToolStripItem[]{m1,m2,m3,new System.Windows.Forms.ToolStripSeparator(),m4});
             trayIcon.ContextMenuStrip=menu;
         }
 
@@ -353,6 +487,7 @@ namespace GameDictApp {
                 }
             });
         }
+
         private void AnalyzeImageForFloating(FloatingResultWindow fw,byte[] imgBytes) {
             bool vis=useVision;
             Task.Run(()=>{
@@ -431,15 +566,13 @@ namespace GameDictApp {
         }
 
         private void RebuildHistoryItem(HistoryEntry entry){
-            // Called during load (oldest-first after reversal); appends to bottom
-            // Insert date header if this is the first entry for this date in the list
             bool hdrExists=false;
             foreach(System.Windows.Controls.ListBoxItem it in historyList.Items){
                 var hb=it.Content as Border;
                 if(hb!=null){var tb=hb.Child as TextBlock;
                     if(tb!=null&&tb.Foreground is SolidColorBrush){
-                        string label=entry.Date==DateTime.Now.ToString("yyyy-MM-dd")?"\u4eca\u5929":
-                            entry.Date==DateTime.Now.AddDays(-1).ToString("yyyy-MM-dd")?"\u6628\u5929":entry.Date;
+                        string label=entry.Date==DateTime.Now.ToString("yyyy-MM-dd")?"今天":
+                            entry.Date==DateTime.Now.AddDays(-1).ToString("yyyy-MM-dd")?"昨天":entry.Date;
                         if(tb.Text==label){hdrExists=true;break;}
                     }
                 }
@@ -447,6 +580,7 @@ namespace GameDictApp {
             if(!hdrExists)historyList.Items.Add(MakeDateHeader(entry.Date??""));
             historyList.Items.Add(MakeCard(entry));
         }
+
         private void AddHistory(string source,string query,string result,byte[] imgBytes=null) {
             string today=DateTime.Now.ToString("yyyy-MM-dd");
             string imgPath=null;
@@ -456,30 +590,31 @@ namespace GameDictApp {
                 Query=query.Length>40?query.Substring(0,40)+"...":query,
                 Result=result,ImagePath=imgPath};
             historyItems.Add(entry);
-            // Date group header if needed
             bool needHeader=true;
             foreach(var it in historyItems){if(it!=entry&&it.Date==today){needHeader=false;break;}}
             if(needHeader)historyList.Items.Insert(0,MakeDateHeader(today));
             historyList.Items.Insert(needHeader?1:0,MakeCard(entry));
-            statusText.Text="\u5386\u53f2: "+historyItems.Count+" \u6761";
+            statusText.Text="历史: "+historyItems.Count+" 条";
         }
+
         private ListBoxItem MakeDateHeader(string date){
-            string label=date==DateTime.Now.ToString("yyyy-MM-dd")?"\u4eca\u5929":
-                date==DateTime.Now.AddDays(-1).ToString("yyyy-MM-dd")?"\u6628\u5929":date;
+            string label=date==DateTime.Now.ToString("yyyy-MM-dd")?"今天":
+                date==DateTime.Now.AddDays(-1).ToString("yyyy-MM-dd")?"昨天":date;
             Border hb=new Border{
-                Padding=new Thickness(8,4,8,4),Margin=new Thickness(0,6,0,2),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
+                Padding=new Thickness(8,6,8,4),Margin=new Thickness(0,4,0,2),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
                 BorderThickness=new Thickness(0,0,0,1)};
             hb.Child=new TextBlock{Text=label,FontSize=11,FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Color.FromRgb(99,102,241))};
+                Foreground=new SolidColorBrush(Win11Theme.Accent)};
             return new ListBoxItem{Content=hb,Background=Brushes.Transparent,
                 Padding=new Thickness(0),IsEnabled=false,
                 HorizontalContentAlignment=HorizontalAlignment.Stretch};
         }
+
         private ListBoxItem MakeCard(HistoryEntry entry){
             Border card=new Border{CornerRadius=new CornerRadius(6),
-                Background=new SolidColorBrush(Color.FromRgb(16,16,16)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(35,255,255,255)),
+                Background=new SolidColorBrush(Win11Theme.BgCard),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
                 BorderThickness=new Thickness(1),Padding=new Thickness(10,8,10,8),Margin=new Thickness(2,2,2,4)};
             Grid cg=new Grid();
             cg.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto}); // thumb
@@ -487,6 +622,7 @@ namespace GameDictApp {
             cg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             cg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             cg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            
             // thumbnail
             if(!string.IsNullOrEmpty(entry.ImagePath)&&File.Exists(entry.ImagePath)){
                 try{
@@ -508,24 +644,24 @@ namespace GameDictApp {
             // source badge + query
             StackPanel topRow=new StackPanel{Orientation=Orientation.Horizontal};
             Border srcB=new Border{CornerRadius=new CornerRadius(3),
-                Background=new SolidColorBrush(Color.FromArgb(40,99,102,241)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(80,99,102,241)),
+                Background=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(40,0,103,192) : Color.FromArgb(25,0,103,192)),
+                BorderBrush=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(80,0,103,192) : Color.FromArgb(60,0,103,192)),
                 BorderThickness=new Thickness(1),Padding=new Thickness(5,1,5,1),Margin=new Thickness(0,1,8,0)};
-            srcB.Child=new TextBlock{Text=entry.Source,FontSize=10,Foreground=new SolidColorBrush(Color.FromRgb(130,130,190))};
+            srcB.Child=new TextBlock{Text=entry.Source,FontSize=10,Foreground=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(140,180,240) : Color.FromRgb(0,90,180))};
             topRow.Children.Add(srcB);
             topRow.Children.Add(new TextBlock{Text=entry.Query,FontSize=12,FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Color.FromRgb(220,220,232)),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
                 TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center});
             Grid.SetRow(topRow,0);Grid.SetColumn(topRow,1);cg.Children.Add(topRow);
             // time
             TextBlock timeTb=new TextBlock{Text=entry.Time,FontSize=10,
-                Foreground=new SolidColorBrush(Color.FromRgb(80,80,110)),Margin=new Thickness(0,3,0,2)};
+                Foreground=new SolidColorBrush(Win11Theme.FgTertiary),Margin=new Thickness(0,3,0,2)};
             Grid.SetRow(timeTb,1);Grid.SetColumn(timeTb,1);cg.Children.Add(timeTb);
             // preview
             string preview=(entry.Result??"").Replace("\n"," ").Replace("\r","");
             if(preview.Length>60)preview=preview.Substring(0,60)+"...";
             TextBlock pTb=new TextBlock{Text=preview,FontSize=11,
-                Foreground=new SolidColorBrush(Color.FromRgb(100,100,118)),
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
                 TextWrapping=TextWrapping.NoWrap,TextTrimming=TextTrimming.CharacterEllipsis};
             Grid.SetRow(pTb,2);Grid.SetColumn(pTb,1);cg.Children.Add(pTb);
             card.Child=cg;
@@ -533,6 +669,465 @@ namespace GameDictApp {
                 Padding=new Thickness(0),HorizontalContentAlignment=HorizontalAlignment.Stretch};
         }
     }
+
+    public class HistoryDetailWindow : Window {
+        public HistoryDetailWindow(HistoryEntry entry) {
+            this.Title="GameDict - 详情"; this.Width=520; this.Height=520;
+            this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
+            this.Background=new SolidColorBrush(Win11Theme.BgWindow);
+            this.SourceInitialized+=(s,e)=>Win11Theme.ApplyToWindow(this);
+
+            Grid g=new Grid{Margin=new Thickness(16)};
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
+            DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
+            StackPanel hi=new StackPanel{Orientation=Orientation.Horizontal};
+            Border sb2=new Border{CornerRadius=new CornerRadius(3),
+                Background=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(40,0,103,192) : Color.FromArgb(25,0,103,192)),
+                BorderBrush=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromArgb(80,0,103,192) : Color.FromArgb(60,0,103,192)),
+                BorderThickness=new Thickness(1),Padding=new Thickness(6,2,6,2),Margin=new Thickness(0,0,8,0)};
+            sb2.Child=new TextBlock{Text=entry.Source,FontSize=11,Foreground=new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(140,180,240) : Color.FromRgb(0,90,180))};
+            hi.Children.Add(sb2);
+            hi.Children.Add(new TextBlock{Text=entry.Time+"  "+entry.Query,FontSize=13,
+                FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                VerticalAlignment=VerticalAlignment.Center});
+            DockPanel.SetDock(hi,Dock.Left); h.Children.Add(hi);
+            Grid.SetRow(h,0); g.Children.Add(h);
+
+            // Image preview
+            if(!string.IsNullOrEmpty(entry.ImagePath)&&File.Exists(entry.ImagePath)){
+                try{
+                    g.RowDefinitions.Insert(1,new RowDefinition{Height=GridLength.Auto});
+                    var bmp=new System.Windows.Media.Imaging.BitmapImage(new Uri(entry.ImagePath));
+                    var img=new System.Windows.Controls.Image{Source=bmp,MaxHeight=140,
+                        Stretch=System.Windows.Media.Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left};
+                    Border imgBrd=new Border{CornerRadius=new CornerRadius(6),ClipToBounds=true,
+                        BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                        BorderThickness=new Thickness(1),Margin=new Thickness(0,0,0,10)};
+                    imgBrd.Child=img;
+                    Grid.SetRow(imgBrd,1); g.Children.Add(imgBrd);
+                    Grid.SetRow(g.Children[1],0);
+                }catch{}
+            }
+
+            ScrollViewer sv=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+            sv.Content=new TextBlock{Text=entry.Result,FontSize=13,LineHeight=22,TextWrapping=TextWrapping.Wrap,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            Border cb3=new Border{CornerRadius=new CornerRadius(8),
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1),Padding=new Thickness(14)};
+            cb3.Child=sv; Grid.SetRow(cb3,g.RowDefinitions.Count-1); g.Children.Add(cb3);
+            this.Content=g;
+            this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Close();};
+        }
+    }
+
+    public class SettingsDialog : Window {
+        private TextBox TB,TK,CMBTEXT; private System.Windows.Controls.Primitives.Popup CMBPOPUP; private ListBox CMBLB; private MainWindow M;
+        public SettingsDialog(MainWindow main) {
+            M=main; this.Title="设置"; this.Width=440; this.Height=380;
+            this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
+            this.Background=new SolidColorBrush(Win11Theme.BgWindow);
+            this.SourceInitialized+=(s,e)=>Win11Theme.ApplyToWindow(this);
+
+            StackPanel sp=new StackPanel{Margin=new Thickness(20)};
+            DockPanel hd=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
+            hd.Children.Add(new TextBlock{Text="设置",FontSize=16,FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary)});
+            sp.Children.Add(hd);
+            sp.Children.Add(new TextBlock{Text="配置文件: "+GameDictConfig.ConfigPath,FontSize=10,
+                Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
+                Margin=new Thickness(0,0,0,12),TextWrapping=TextWrapping.Wrap});
+            sp.Children.Add(Lbl("API 地址")); TB=Inp(M.apiBase); sp.Children.Add(TB);
+            sp.Children.Add(Lbl("API 密钥")); TK=Inp(M.apiKey);  sp.Children.Add(TK);
+
+            // Model row: custom TextBox + Popup + ListBox
+            sp.Children.Add(Lbl("模型"));
+            DockPanel modelRow=new DockPanel{LastChildFill=true,Margin=new Thickness(0,0,0,10)};
+            Button fetchBtn=new Button{Content="获取",Width=54,Height=28,Cursor=Cursors.Hand,
+                Margin=new Thickness(6,0,0,0)};
+            fetchBtn.Style=Win11Theme.CreateButtonStyle(false);
+            DockPanel.SetDock(fetchBtn,Dock.Right); modelRow.Children.Add(fetchBtn);
+            Grid cmbGrid=new Grid{Height=28};
+            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
+            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+            CMBTEXT=new TextBox{
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1,1,0,1),
+                VerticalContentAlignment=VerticalAlignment.Center,
+                Padding=new Thickness(8,0,4,0),Text=M.currentModel};
+            Grid.SetColumn(CMBTEXT,0); cmbGrid.Children.Add(CMBTEXT);
+            Button arrowBtn=new Button{Content="▾",Width=24,
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(0,1,1,1),Cursor=Cursors.Hand};
+            Grid.SetColumn(arrowBtn,1); cmbGrid.Children.Add(arrowBtn);
+            modelRow.Children.Add(cmbGrid);
+            sp.Children.Add(modelRow);
+
+            CMBLB=new ListBox{
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
+                BorderThickness=new Thickness(1),MaxHeight=200};
+            ScrollViewer.SetVerticalScrollBarVisibility(CMBLB,ScrollBarVisibility.Auto);
+            var lbItemStyle=new Style(typeof(ListBoxItem));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Win11Theme.BgSurface)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty,new SolidColorBrush(Win11Theme.FgPrimary)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty,new Thickness(10,5,10,5)));
+            var lbHover=new Trigger{Property=ListBoxItem.IsMouseOverProperty,Value=true};
+            lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Win11Theme.BgHover)));
+            lbItemStyle.Triggers.Add(lbHover);
+            var lbSel=new Trigger{Property=ListBoxItem.IsSelectedProperty,Value=true};
+            lbSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Color.FromArgb(50,0,103,192))));
+            lbItemStyle.Triggers.Add(lbSel);
+            CMBLB.ItemContainerStyle=lbItemStyle;
+            CMBLB.SelectionChanged+=(s,e)=>{
+                if(CMBLB.SelectedItem!=null){
+                    CMBTEXT.Text=CMBLB.SelectedItem.ToString();
+                    CMBPOPUP.IsOpen=false;
+                }
+            };
+            CMBPOPUP=new System.Windows.Controls.Primitives.Popup{
+                PlacementTarget=cmbGrid,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                StaysOpen=false,Child=CMBLB};
+            arrowBtn.Click+=(s,e)=>{
+                if(CMBLB.Items.Count>0){
+                    CMBPOPUP.Width=cmbGrid.ActualWidth+arrowBtn.ActualWidth;
+                    CMBPOPUP.IsOpen=!CMBPOPUP.IsOpen;
+                }else{
+                    fetchBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+            };
+
+            fetchBtn.Click+=(s,e)=>{
+                fetchBtn.IsEnabled=false; fetchBtn.Content="...";
+                string ep=TB.Text.Trim(); string key=TK.Text.Trim();
+                if(ep.EndsWith("/chat/completions")) ep=ep.Substring(0,ep.Length-"/chat/completions".Length);
+                if(!ep.EndsWith("/models")) ep=ep.TrimEnd('/')+"/models";
+                Task.Run(()=>{
+                    var ids=new List<string>();
+                    try{
+                        var req=(HttpWebRequest)WebRequest.Create(ep);
+                        req.Method="GET"; req.Headers["Authorization"]="Bearer "+key;
+                        req.UserAgent="Codex/1.0"; req.Timeout=10000;
+                        using(var resp=(HttpWebResponse)req.GetResponse())
+                        using(var sr2=new System.IO.StreamReader(resp.GetResponseStream())){
+                            string json=sr2.ReadToEnd();
+                            int pos=0;
+                            while(true){
+                                int idx2=json.IndexOf("\"id\"",pos);
+                                if(idx2<0)break;
+                                int q1=json.IndexOf('"',idx2+4);
+                                if(q1<0)break;
+                                int q2=json.IndexOf('"',q1+1);
+                                if(q2<0)break;
+                                string id=json.Substring(q1+1,q2-q1-1);
+                                if(id.Length>0&&!id.Contains("/")&&id.IndexOf("codex",System.StringComparison.OrdinalIgnoreCase)<0)ids.Add(id);
+                                pos=q2+1;
+                            }
+                            ids.Sort();
+                        }
+                    }catch(Exception ex){Logger.Error("FetchModels",ex);}
+                    this.Dispatcher.Invoke(()=>{
+                        fetchBtn.Content="获取"; fetchBtn.IsEnabled=true;
+                        if(ids.Count>0){
+                            string cur=CMBTEXT.Text;
+                            CMBLB.Items.Clear();
+                            foreach(var id in ids)CMBLB.Items.Add(id);
+                            CMBTEXT.Text=cur;
+                            CMBPOPUP.Width=cmbGrid.ActualWidth+arrowBtn.ActualWidth;
+                            CMBPOPUP.IsOpen=true;
+                        }
+                    });
+                });
+            };
+
+            // Vision toggle
+            DockPanel vtRow=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
+            CheckBox visionChk=new CheckBox{
+                Content="图像模式（直接传图）",IsChecked=M.useVision,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                VerticalContentAlignment=VerticalAlignment.Center};
+            TextBlock visionHint=new TextBlock{
+                Text="取消勾选则先 OCR 再传文字，适合纯文本模型",
+                FontSize=10,Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
+                Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
+            DockPanel.SetDock(visionChk,Dock.Left); vtRow.Children.Add(visionChk);
+            vtRow.Children.Add(visionHint);
+            sp.Children.Add(vtRow);
+
+            // Actions
+            StackPanel btns=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};
+            Button save=new Button{Content="保存",Width=72,Height=30,Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
+            save.Style=Win11Theme.CreateButtonStyle(true);
+            save.Click+=(s,e)=>{
+                M.apiBase=TB.Text.Trim();M.apiKey=TK.Text.Trim();M.currentModel=CMBTEXT.Text.Trim();M.useVision=visionChk.IsChecked==true;
+                double sx=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastX:-1;double sy=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastY:-1;
+                GameDictConfig.Save(M.apiBase,M.apiKey,M.currentModel,M.useVision,sx,sy);
+                M.ApplyTheme();
+                this.Close();
+            };
+
+            Button cancel=new Button{Content="取消",Width=64,Height=30,Cursor=Cursors.Hand};
+            cancel.Style=Win11Theme.CreateButtonStyle(false);
+            cancel.Click+=(s,e)=>this.Close();
+            btns.Children.Add(save); btns.Children.Add(cancel); sp.Children.Add(btns);
+
+            var sv=new System.Windows.Controls.ScrollViewer{VerticalScrollBarVisibility=System.Windows.Controls.ScrollBarVisibility.Auto,Content=sp};
+            this.Content=sv;
+        }
+
+        private TextBlock Lbl(string t) {
+            return new TextBlock{Text=t,FontSize=11,Margin=new Thickness(0,0,0,4),
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary)};
+        }
+        private TextBox Inp(string v) {
+            return new TextBox{Text=v,Height=28,Margin=new Thickness(0,0,0,10),
+                VerticalContentAlignment=VerticalAlignment.Center,Padding=new Thickness(8,0,8,0),
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),BorderThickness=new Thickness(1)};
+        }
+    }
+
+    public class FloatingResultWindow : Window {
+        private RichTextBox contentBox;
+        private System.Windows.Controls.Image previewImg;
+        private Border previewBorder;
+        private Border root;
+        private Border cc;
+        private Button close;
+        public double LastX = -1;
+        public double LastY = -1;
+        public bool HasCustomPosition = false;
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        private const int SW_SHOWNOACTIVATE = 4;
+
+        public FloatingResultWindow() {
+            this.Title="GameDict Float"; this.Width=420; this.Height=520;
+            this.WindowStyle=WindowStyle.None; this.AllowsTransparency=true;
+            this.Background=Brushes.Transparent; this.Topmost=true;
+            this.ShowInTaskbar=false; this.ResizeMode=ResizeMode.NoResize;
+            this.Focusable=false;
+            this.SourceInitialized += (s, e) => {
+                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
+                SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
+            };
+
+            root=new Border{CornerRadius=new CornerRadius(12),
+                BorderThickness=new Thickness(1),Margin=new Thickness(8)};
+            root.Effect=new DropShadowEffect{BlurRadius=22,Color=Colors.Black,Opacity=0.35,ShadowDepth=4,Direction=270};
+            root.MouseLeftButtonDown+=(s,e)=>{
+                if(e.LeftButton==MouseButtonState.Pressed){
+                    try{
+                        this.DragMove();
+                        LastX=this.Left; LastY=this.Top; HasCustomPosition=true;
+                        GameDictConfig.SavePosition(LastX,LastY);
+                    }catch{}
+                }
+            };
+            Grid g=new Grid{Margin=new Thickness(12,10,12,10)};
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+
+            // Header
+            DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,8)};
+            Border bg=new Border{Width=18,Height=18,CornerRadius=new CornerRadius(4),
+                Background=new SolidColorBrush(Color.FromRgb(0,103,192)),VerticalAlignment=VerticalAlignment.Center};
+            bg.Child=new TextBlock{Text="G",Foreground=Brushes.White,FontSize=10,FontWeight=FontWeights.Bold,
+                HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};
+            DockPanel.SetDock(bg,Dock.Left); h.Children.Add(bg);
+
+            close=new Button{Content="✕",Width=26,Height=26,
+                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,FontWeight=FontWeights.Bold};
+            close.Click+=(s,e)=>this.Hide();
+            DockPanel.SetDock(close,Dock.Right); h.Children.Add(close);
+            Grid.SetRow(h,0); g.Children.Add(h);
+
+            // Preview thumbnail
+            previewImg=new System.Windows.Controls.Image{
+                MaxHeight=100,Stretch=System.Windows.Media.Stretch.Uniform,
+                HorizontalAlignment=HorizontalAlignment.Left};
+            previewBorder=new Border{CornerRadius=new CornerRadius(6),
+                BorderThickness=new Thickness(1),Padding=new Thickness(2),
+                Margin=new Thickness(0,0,0,8),Visibility=Visibility.Collapsed};
+            previewBorder.Child=previewImg;
+            Grid.SetRow(previewBorder,1); g.Children.Add(previewBorder);
+
+            // Content
+            contentBox=new RichTextBox{Background=Brushes.Transparent,
+                BorderThickness=new Thickness(0),IsReadOnly=true,
+                FontSize=13,FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Padding=new Thickness(2)};
+            ScrollViewer.SetVerticalScrollBarVisibility(contentBox,ScrollBarVisibility.Auto);
+            ScrollViewer.SetHorizontalScrollBarVisibility(contentBox,ScrollBarVisibility.Disabled);
+            cc=new Border{CornerRadius=new CornerRadius(8),Padding=new Thickness(4,2,4,2)};
+            cc.Child=contentBox; Grid.SetRow(cc,2); g.Children.Add(cc);
+
+            root.Child=g; this.Content=root;
+            this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Hide();};
+
+            Win11Theme.ThemeChanged += () => this.Dispatcher.Invoke(ApplyFloatTheme);
+            ApplyFloatTheme();
+        }
+
+        private void ApplyFloatTheme() {
+            bool isDark = Win11Theme.IsDarkTheme;
+            root.Background = new SolidColorBrush(isDark ? Color.FromArgb(180, 16, 16, 20) : Color.FromArgb(210, 250, 250, 252));
+            root.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
+            
+            close.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
+            close.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(190, 190, 205) : Color.FromRgb(80, 80, 95));
+            close.MouseEnter += (s, e) => close.Background = new SolidColorBrush(Color.FromRgb(196, 43, 28));
+            close.MouseLeave += (s, e) => close.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
+
+            previewBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
+            contentBox.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 235) : Color.FromRgb(25, 25, 30));
+        }
+
+        public void ShowLoading(double cursorX,double cursorY,byte[] imgBytes){
+            this.WindowState=WindowState.Normal; this.Width=420; this.Height=520;
+            if(HasCustomPosition&&LastX>=0&&LastY>=0){
+                EnsureWithinScreen(LastX,LastY);
+            }else{
+                PositionAt(cursorX,cursorY);
+            }
+            if(imgBytes!=null&&imgBytes.Length>0){
+                try{
+                    var bmp=new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.StreamSource=new MemoryStream(imgBytes);
+                    bmp.CacheOption=System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.EndInit(); bmp.Freeze();
+                    previewImg.Source=bmp;
+                    previewBorder.Visibility=Visibility.Visible;
+                }catch{previewBorder.Visibility=Visibility.Collapsed;}
+            }else{previewBorder.Visibility=Visibility.Collapsed;}
+            SetRichText("⌛ 正在识别中...");
+            this.Show();
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if(handle != IntPtr.Zero){
+                ShowWindow(handle, SW_SHOWNOACTIVATE);
+            }
+        }
+
+        public void ShowResult(string text){SetRichText(text);}
+
+        private void SetRichText(string raw){
+            bool isDark = Win11Theme.IsDarkTheme;
+            var doc=new System.Windows.Documents.FlowDocument();
+            doc.PagePadding=new Thickness(0);
+            string[] lns=raw.Replace("\r\n","\n").Replace("\r","\n").Split('\n');
+            var curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0),LineHeight=double.NaN};
+            bool firstBlock=true;
+            System.Action flushPara=()=>{
+                if(curPara.Inlines.Count>0){doc.Blocks.Add(curPara);firstBlock=false;}
+                curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0,3,0,0),LineHeight=double.NaN};
+            };
+            foreach(string line in lns){
+                string t=line.TrimEnd();
+                if(t.TrimStart('-').Replace("-","").Trim().Length==0&&t.Length>=2&&t.Length<=4){flushPara();continue;}
+                if(t.StartsWith("#### ")){
+                    flushPara();
+                    Color hc = isDark ? Color.FromRgb(160,180,240) : Color.FromRgb(0,90,180);
+                    AddHeading(doc,t.Substring(5),12.5,hc,new Thickness(0,firstBlock?0:6,0,2));
+                    firstBlock=false;continue;
+                }
+                if(t.StartsWith("### ")){
+                    flushPara();
+                    Color hc = isDark ? Color.FromRgb(140,165,255) : Color.FromRgb(0,80,195);
+                    AddHeading(doc,t.Substring(4),13.5,hc,new Thickness(0,firstBlock?0:8,0,2));
+                    firstBlock=false;continue;
+                }
+                if(t.StartsWith("## ")){
+                    flushPara();
+                    Color hc = isDark ? Color.FromRgb(180,200,255) : Color.FromRgb(0,103,192);
+                    AddHeading(doc,t.Substring(3),14.5,hc,new Thickness(0,firstBlock?0:10,0,2));
+                    firstBlock=false;continue;
+                }
+                if(t.Length==0){flushPara();continue;}
+                if(t.StartsWith("- ")||t.StartsWith("* ")){
+                    string content=t.Substring(2);
+                    flushPara();
+                    var bp=new System.Windows.Documents.Paragraph{Margin=new Thickness(12,1,0,1),LineHeight=double.NaN};
+                    var bdot=new System.Windows.Documents.Run("• ");
+                    bdot.Foreground=new SolidColorBrush(isDark ? Color.FromRgb(99,140,255) : Color.FromRgb(0,103,192));
+                    bp.Inlines.Add(bdot);
+                    AddInlineText(bp,content,isDark);
+                    doc.Blocks.Add(bp);firstBlock=false;
+                    curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0,3,0,0),LineHeight=double.NaN};
+                    continue;
+                }
+                AddInlineText(curPara,t,isDark);
+                curPara.Inlines.Add(new System.Windows.Documents.LineBreak());
+            }
+            if(curPara.Inlines.Count>0)doc.Blocks.Add(curPara);
+            contentBox.Document=doc;
+        }
+
+        private void AddHeading(System.Windows.Documents.FlowDocument doc,string text,double fs,Color c,Thickness margin){
+            var p=new System.Windows.Documents.Paragraph{Margin=margin,LineHeight=double.NaN};
+            var r=new System.Windows.Documents.Run(text);
+            r.FontWeight=FontWeights.Bold;r.FontSize=fs;r.Foreground=new SolidColorBrush(c);
+            p.Inlines.Add(r); doc.Blocks.Add(p);
+        }
+
+        private void AddInlineText(System.Windows.Documents.Paragraph para,string text,bool isDark){
+            int i=0;
+            while(i<text.Length){
+                int si=text.IndexOf("**",i);
+                if(si<0){AppendRun(para,text.Substring(i),false,isDark);break;}
+                if(si>i)AppendRun(para,text.Substring(i,si-i),false,isDark);
+                int ei=text.IndexOf("**",si+2);
+                if(ei<0){AppendRun(para,text.Substring(si),false,isDark);break;}
+                AppendRun(para,text.Substring(si+2,ei-si-2),true,isDark);
+                i=ei+2;
+            }
+        }
+
+        private void AppendRun(System.Windows.Documents.Paragraph para,string text,bool bold,bool isDark){
+            if(text.Length==0)return;
+            var r=new System.Windows.Documents.Run(text);
+            if(bold){
+                r.FontWeight=FontWeights.Bold;
+                r.Foreground=new SolidColorBrush(isDark ? Color.FromRgb(245,248,255) : Color.FromRgb(10,10,20));
+            } else {
+                r.Foreground=new SolidColorBrush(isDark ? Color.FromRgb(215,215,225) : Color.FromRgb(30,30,40));
+            }
+            para.Inlines.Add(r);
+        }
+
+        private void PositionAt(double x,double y){
+            double tx=x+20,ty=y+20;
+            EnsureWithinScreen(tx,ty);
+        }
+
+        private void EnsureWithinScreen(double targetX,double targetY){
+            double maxX=SystemParameters.PrimaryScreenWidth-Width;
+            double maxY=SystemParameters.PrimaryScreenHeight-Height;
+            if(targetX>maxX)targetX=maxX;
+            if(targetY>maxY)targetY=maxY;
+            if(targetX<0)targetX=0;
+            if(targetY<0)targetY=0;
+            this.Left=targetX; this.Top=targetY;
+        }
+    }
+
     public static class HistoryStore {
         private static readonly string HistoryPath=System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"GameDict","history.dat");
@@ -570,11 +1165,6 @@ namespace GameDictApp {
                 int i=0;
                 while(i<lines.Length){
                     if(lines[i].Trim()==SEP){
-                        // New 7-line format: SEP date time source query result imagepath
-                        if(i+6<lines.Length&&lines[i+2].Length==8&&lines[i+2].Contains(":")){
-                            // date is yyyy-MM-dd (10 chars), time HH:mm:ss (8 chars)
-                        }
-                        // Detect format by checking if field at i+1 looks like a date
                         bool newFmt=i+6<lines.Length&&lines[i+1].Length==10&&lines[i+1].Contains("-");
                         if(newFmt&&i+6<lines.Length){
                             var entry=new HistoryEntry{
@@ -585,7 +1175,6 @@ namespace GameDictApp {
                             if(!File.Exists(entry.ImagePath))entry.ImagePath=null;
                             list.Add(entry);i+=7;continue;
                         } else if(i+4<lines.Length){
-                            // Old 5-line: SEP time source query result
                             var entry=new HistoryEntry{
                                 Date=DateTime.Now.ToString("yyyy-MM-dd"),
                                 Time=lines[i+1],Source=lines[i+2],
@@ -603,466 +1192,19 @@ namespace GameDictApp {
     }
 
     public class HistoryEntry {
-        public string Date{get;set;}      // yyyy-MM-dd
+        public string Date{get;set;}
         public string Time{get;set;}
         public string Source{get;set;}
         public string Query{get;set;}
         public string Result{get;set;}
-        public string ImagePath{get;set;} // path to saved screenshot, or empty
-    }
-
-    public class HistoryDetailWindow : Window {
-        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd,int attr,ref int attrValue,int attrSize);
-        private void ApplyDarkTitleBar(){
-            try{
-                var hwnd=new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                int dark=1;
-                DwmSetWindowAttribute(hwnd,20,ref dark,sizeof(int));
-            }catch{}
-        }
-        public HistoryDetailWindow(HistoryEntry entry) {
-            this.Title="GameDict - \u8be6\u60c5"; this.Width=520; this.Height=520;
-            this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
-            this.Background=new SolidColorBrush(Color.FromRgb(8,8,8));
-            this.SourceInitialized+=(s,e)=>ApplyDarkTitleBar();
-            Grid g=new Grid{Margin=new Thickness(16)};
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-            DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
-            StackPanel hi=new StackPanel{Orientation=Orientation.Horizontal};
-            Border sb2=new Border{CornerRadius=new CornerRadius(3),
-                Background=new SolidColorBrush(Color.FromArgb(40,99,102,241)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(80,99,102,241)),
-                BorderThickness=new Thickness(1),Padding=new Thickness(6,2,6,2),Margin=new Thickness(0,0,8,0)};
-            sb2.Child=new TextBlock{Text=entry.Source,FontSize=11,Foreground=new SolidColorBrush(Color.FromRgb(130,130,190))};
-            hi.Children.Add(sb2);
-            hi.Children.Add(new TextBlock{Text=entry.Time+"  "+entry.Query,FontSize=13,
-                FontWeight=FontWeights.SemiBold,Foreground=new SolidColorBrush(Color.FromRgb(220,220,232)),
-                VerticalAlignment=VerticalAlignment.Center});
-            DockPanel.SetDock(hi,Dock.Left); h.Children.Add(hi);
-            Grid.SetRow(h,0); g.Children.Add(h);
-            // Image preview
-            if(!string.IsNullOrEmpty(entry.ImagePath)&&File.Exists(entry.ImagePath)){
-                try{
-                    g.RowDefinitions.Insert(1,new RowDefinition{Height=GridLength.Auto});
-                    // shift existing row indices
-                    var bmp=new System.Windows.Media.Imaging.BitmapImage(new Uri(entry.ImagePath));
-                    var img=new System.Windows.Controls.Image{Source=bmp,MaxHeight=140,
-                        Stretch=System.Windows.Media.Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left};
-                    Border imgBrd=new Border{CornerRadius=new CornerRadius(6),ClipToBounds=true,
-                        BorderBrush=new SolidColorBrush(Color.FromArgb(50,255,255,255)),
-                        BorderThickness=new Thickness(1),Margin=new Thickness(0,0,0,10)};
-                    imgBrd.Child=img;
-                    Grid.SetRow(imgBrd,1); g.Children.Add(imgBrd);
-                    // Move result/copy to row+1
-                    Grid.SetRow(g.Children[1],0); // header stays 0
-                }catch{}
-            }
-            ScrollViewer sv=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
-            sv.Content=new TextBlock{Text=entry.Result,FontSize=13,LineHeight=22,TextWrapping=TextWrapping.Wrap,
-                Foreground=new SolidColorBrush(Color.FromRgb(210,210,222)),
-                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
-            Border cb3=new Border{CornerRadius=new CornerRadius(8),
-                Background=new SolidColorBrush(Color.FromRgb(14,14,14)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(1),Padding=new Thickness(14)};
-            cb3.Child=sv; Grid.SetRow(cb3,g.RowDefinitions.Count-2); g.Children.Add(cb3);
-            this.Content=g;
-            this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Close();};
-        }
-    }
-
-    public class SettingsDialog : Window {
-        private TextBox TB,TK,CMBTEXT; private System.Windows.Controls.Primitives.Popup CMBPOPUP; private ListBox CMBLB; private MainWindow M;
-        public SettingsDialog(MainWindow main) {
-            M=main; this.Title="设置"; this.Width=440; this.Height=380;
-            this.WindowStartupLocation=WindowStartupLocation.CenterOwner;
-            this.Background=new SolidColorBrush(Color.FromRgb(0,0,0));
-            // Global dark button style for this window
-            var btnStyle=new Style(typeof(Button));
-            btnStyle.Setters.Add(new Setter(Button.BackgroundProperty,new SolidColorBrush(Color.FromRgb(30,30,40))));
-            btnStyle.Setters.Add(new Setter(Button.ForegroundProperty,new SolidColorBrush(Color.FromRgb(200,200,215))));
-            btnStyle.Setters.Add(new Setter(Button.BorderThicknessProperty,new Thickness(1)));
-            btnStyle.Setters.Add(new Setter(Button.BorderBrushProperty,new SolidColorBrush(Color.FromArgb(50,255,255,255))));
-            btnStyle.Setters.Add(new Setter(Button.CursorProperty,Cursors.Hand));
-            btnStyle.Setters.Add(new Setter(Button.TemplateProperty,(ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-                "<ControlTemplate xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" TargetType=\"Button\">" +
-                "  <Border Name=\"bd\" Background=\"{TemplateBinding Background}\" BorderBrush=\"{TemplateBinding BorderBrush}\" BorderThickness=\"{TemplateBinding BorderThickness}\" Padding=\"{TemplateBinding Padding}\">" +
-                "    <ContentPresenter HorizontalAlignment=\"Center\" VerticalAlignment=\"Center\"/>" +
-                "  </Border>" +
-                "  <ControlTemplate.Triggers>" +
-                "    <Trigger Property=\"IsMouseOver\" Value=\"True\"><Setter TargetName=\"bd\" Property=\"Background\" Value=\"#FF2A2A3A\"/></Trigger>" +
-                "    <Trigger Property=\"IsPressed\" Value=\"True\"><Setter TargetName=\"bd\" Property=\"Background\" Value=\"#FF1A1A28\"/></Trigger>" +
-                "    <Trigger Property=\"IsEnabled\" Value=\"False\"><Setter TargetName=\"bd\" Property=\"Opacity\" Value=\"0.4\"/></Trigger>" +
-                "  </ControlTemplate.Triggers>" +
-                "</ControlTemplate>")));
-            this.Resources[typeof(Button)]=btnStyle;
-            StackPanel sp=new StackPanel{Margin=new Thickness(20)};
-            DockPanel hd=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
-            hd.Children.Add(new TextBlock{Text="设置",FontSize=16,FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Color.FromRgb(220,220,230))});
-            sp.Children.Add(hd);
-            sp.Children.Add(new TextBlock{Text="配置文件: "+GameDictConfig.ConfigPath,FontSize=10,
-                Foreground=new SolidColorBrush(Color.FromRgb(80,80,100)),
-                Margin=new Thickness(0,0,0,12),TextWrapping=TextWrapping.Wrap});
-            sp.Children.Add(Lbl("API 地址")); TB=Inp(M.apiBase); sp.Children.Add(TB);
-            sp.Children.Add(Lbl("API 密鑰")); TK=Inp(M.apiKey);  sp.Children.Add(TK);
-            // Model row: custom TextBox + Popup + ListBox
-            sp.Children.Add(Lbl("模型"));
-            DockPanel modelRow=new DockPanel{LastChildFill=true,Margin=new Thickness(0,0,0,10)};
-            Button fetchBtn=new Button{Content="获取",Width=48,Height=28,Cursor=Cursors.Hand,
-                Background=new SolidColorBrush(Color.FromRgb(40,40,55)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(60,99,102,241)),
-                BorderThickness=new Thickness(1),Margin=new Thickness(6,0,0,0),
-                Foreground=new SolidColorBrush(Color.FromRgb(160,165,220))};
-            DockPanel.SetDock(fetchBtn,Dock.Right); modelRow.Children.Add(fetchBtn);
-            Grid cmbGrid=new Grid{Height=28};
-            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
-            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-            CMBTEXT=new TextBox{
-                Background=new SolidColorBrush(Color.FromRgb(16,16,16)),
-                Foreground=new SolidColorBrush(Color.FromRgb(215,215,225)),
-                CaretBrush=new SolidColorBrush(Color.FromRgb(215,215,225)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(1,1,0,1),
-                VerticalContentAlignment=VerticalAlignment.Center,
-                Padding=new Thickness(8,0,4,0),Text=M.currentModel};
-            Grid.SetColumn(CMBTEXT,0); cmbGrid.Children.Add(CMBTEXT);
-            Button arrowBtn=new Button{Content="▾",Width=22,
-                Background=new SolidColorBrush(Color.FromRgb(16,16,16)),
-                Foreground=new SolidColorBrush(Color.FromRgb(160,160,180)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(0,1,1,1),Cursor=Cursors.Hand};
-            Grid.SetColumn(arrowBtn,1); cmbGrid.Children.Add(arrowBtn);
-            modelRow.Children.Add(cmbGrid);
-            sp.Children.Add(modelRow);
-            CMBLB=new ListBox{
-                Background=new SolidColorBrush(Color.FromRgb(16,16,16)),
-                Foreground=new SolidColorBrush(Color.FromRgb(215,215,225)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(60,255,255,255)),
-                BorderThickness=new Thickness(1),MaxHeight=200};
-            ScrollViewer.SetVerticalScrollBarVisibility(CMBLB,ScrollBarVisibility.Auto);
-            var lbItemStyle=new Style(typeof(ListBoxItem));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Color.FromRgb(16,16,16))));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty,new SolidColorBrush(Color.FromRgb(215,215,225))));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty,new Thickness(10,5,10,5)));
-            var lbHover=new Trigger{Property=ListBoxItem.IsMouseOverProperty,Value=true};
-            lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Color.FromRgb(40,40,55))));
-            lbItemStyle.Triggers.Add(lbHover);
-            var lbSel=new Trigger{Property=ListBoxItem.IsSelectedProperty,Value=true};
-            lbSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty,new SolidColorBrush(Color.FromRgb(55,60,100))));
-            lbItemStyle.Triggers.Add(lbSel);
-            CMBLB.ItemContainerStyle=lbItemStyle;
-            CMBPOPUP=new System.Windows.Controls.Primitives.Popup{
-                Child=CMBLB,StaysOpen=false,AllowsTransparency=true,
-                PlacementTarget=cmbGrid,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom};
-            CMBLB.SelectionChanged+=(s,e)=>{
-                if(CMBLB.SelectedItem!=null){CMBTEXT.Text=CMBLB.SelectedItem.ToString();}
-                CMBPOPUP.IsOpen=false;
-            };
-            System.Action togglePopup=()=>{
-                CMBPOPUP.Width=cmbGrid.ActualWidth+arrowBtn.ActualWidth;
-                CMBPOPUP.IsOpen=!CMBPOPUP.IsOpen;
-            };
-            arrowBtn.Click+=(s,e)=>togglePopup();
-            CMBTEXT.PreviewKeyDown+=(s,e)=>{
-                if(e.Key==Key.Down||e.Key==Key.F4){togglePopup();e.Handled=true;}
-            };
-            fetchBtn.Click+=(s,e)=>{
-                fetchBtn.Content="…"; fetchBtn.IsEnabled=false;
-                string baseUrl=TB.Text.Trim(); string key=TK.Text.Trim();
-                string modelsUrl=baseUrl;
-                if(modelsUrl.EndsWith("/chat/completions"))modelsUrl=modelsUrl.Substring(0,modelsUrl.Length-17)+"/models";
-                else if(!modelsUrl.EndsWith("/models"))modelsUrl=modelsUrl.TrimEnd('/')+"/models";
-                System.Threading.Tasks.Task.Run(()=>{
-                    var ids=new System.Collections.Generic.List<string>();
-                    try{
-                        var req=(System.Net.HttpWebRequest)System.Net.WebRequest.Create(modelsUrl);
-                        req.Method="GET"; req.Timeout=8000;
-                        req.Headers["Authorization"]="Bearer "+key;
-                        req.ContentType="application/json";
-                        using(var resp=(System.Net.HttpWebResponse)req.GetResponse())
-                        using(var sr2=new System.IO.StreamReader(resp.GetResponseStream())){
-                            string json=sr2.ReadToEnd();
-                            int pos=0;
-                            while(true){
-                                int idx2=json.IndexOf("\"id\"",pos);
-                                if(idx2<0)break;
-                                int q1=json.IndexOf('"',idx2+4);
-                                if(q1<0)break;
-                                int q2=json.IndexOf('"',q1+1);
-                                if(q2<0)break;
-                                string id=json.Substring(q1+1,q2-q1-1);
-                                if(id.Length>0&&!id.Contains("/")&&id.IndexOf("codex",System.StringComparison.OrdinalIgnoreCase)<0)ids.Add(id);
-                                pos=q2+1;
-                            }
-                            ids.Sort();
-                        }
-                    }catch(Exception ex){Logger.Error("FetchModels",ex);}
-                    this.Dispatcher.Invoke(()=>{
-                        fetchBtn.Content="获取"; fetchBtn.IsEnabled=true;
-                        if(ids.Count>0){
-                            string cur=CMBTEXT.Text;
-                            CMBLB.Items.Clear();
-                            foreach(var id in ids)CMBLB.Items.Add(id);
-                            CMBTEXT.Text=cur;
-                            CMBPOPUP.Width=cmbGrid.ActualWidth+arrowBtn.ActualWidth;
-                            CMBPOPUP.IsOpen=true;
-                        }
-                    });
-                });
-            };
-            // Vision toggle
-            DockPanel vtRow=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
-            CheckBox visionChk=new CheckBox{
-                Content="图像模式（直接传图）",IsChecked=M.useVision,
-                Foreground=new SolidColorBrush(Color.FromRgb(190,190,210)),
-                VerticalContentAlignment=VerticalAlignment.Center};
-            TextBlock visionHint=new TextBlock{
-                Text="取消勾选则先 OCR 再传文字，适合纯文本模型",
-                FontSize=10,Foreground=new SolidColorBrush(Color.FromRgb(90,90,115)),
-                Margin=new Thickness(8,0,0,0),VerticalAlignment=VerticalAlignment.Center};
-            DockPanel.SetDock(visionChk,Dock.Left); vtRow.Children.Add(visionChk);
-            vtRow.Children.Add(visionHint);
-            sp.Children.Add(vtRow);
-            // Actions
-            StackPanel btns=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};
-            Button save=new Button{Content="保存",Width=70,Height=28,
-                Background=new SolidColorBrush(Color.FromRgb(99,102,241)),Foreground=Brushes.White,
-                FontWeight=FontWeights.SemiBold,BorderThickness=new Thickness(0),Cursor=Cursors.Hand,
-                Margin=new Thickness(0,0,8,0)};
-            save.Click+=(s,e)=>{M.apiBase=TB.Text.Trim();M.apiKey=TK.Text.Trim();M.currentModel=CMBTEXT.Text.Trim();M.useVision=visionChk.IsChecked==true;
-                double sx=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastX:-1;double sy=M.floatingWin!=null&&M.floatingWin.HasCustomPosition?M.floatingWin.LastY:-1;GameDictConfig.Save(M.apiBase,M.apiKey,M.currentModel,M.useVision,sx,sy);this.Close();};
-            Button cancel=new Button{Content="取消",Width=60,Height=28,
-                Background=new SolidColorBrush(Color.FromRgb(20,20,20)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(1),Foreground=new SolidColorBrush(Color.FromRgb(180,180,195)),Cursor=Cursors.Hand};
-            cancel.Click+=(s,e)=>this.Close();
-            btns.Children.Add(save); btns.Children.Add(cancel); sp.Children.Add(btns);
-            var sv=new System.Windows.Controls.ScrollViewer{VerticalScrollBarVisibility=System.Windows.Controls.ScrollBarVisibility.Auto,Content=sp};
-            this.Content=sv;
-            this.SourceInitialized+=(s,e)=>ApplyDarkTitleBar();
-        }
-        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd,int attr,ref int attrValue,int attrSize);
-        private void ApplyDarkTitleBar(){
-            try{
-                var hwnd=new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                int dark=1;
-                DwmSetWindowAttribute(hwnd,20,ref dark,sizeof(int)); // DWMWA_USE_IMMERSIVE_DARK_MODE
-            }catch{}
-        }
-        private TextBlock Lbl(string t) {
-            return new TextBlock{Text=t,FontSize=11,Margin=new Thickness(0,0,0,4),
-                Foreground=new SolidColorBrush(Color.FromRgb(130,130,150))};
-        }
-        private TextBox Inp(string v) {
-            return new TextBox{Text=v,Height=28,Margin=new Thickness(0,0,0,10),
-                VerticalContentAlignment=VerticalAlignment.Center,Padding=new Thickness(8,0,8,0),
-                Background=new SolidColorBrush(Color.FromRgb(16,16,16)),
-                Foreground=new SolidColorBrush(Color.FromRgb(215,215,225)),
-                CaretBrush=new SolidColorBrush(Color.FromRgb(215,215,225)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),BorderThickness=new Thickness(1)};
-        }
-
-    }
-
-    public class FloatingResultWindow : Window {
-        private RichTextBox contentBox;
-        private System.Windows.Controls.Image previewImg;
-        private Border previewBorder;
-        public double LastX = -1;
-        public double LastY = -1;
-        public bool HasCustomPosition = false;
-        private const int GWL_EXSTYLE = -20;
-        private const int WS_EX_NOACTIVATE = 0x08000000;
-        [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-        [DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-        private const int SW_SHOWNOACTIVATE = 4;
-
-        public FloatingResultWindow() {
-            this.Title="GameDict Float"; this.Width=420; this.Height=520;
-            this.WindowStyle=WindowStyle.None; this.AllowsTransparency=true;
-            this.Background=Brushes.Transparent; this.Topmost=true;
-            this.ShowInTaskbar=false; this.ResizeMode=ResizeMode.NoResize;
-            this.Focusable=false;
-            this.SourceInitialized += (s, e) => {
-                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
-                SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
-            };
-            Border root=new Border{CornerRadius=new CornerRadius(12),
-                Background=new SolidColorBrush(Color.FromArgb(170,12,12,16)),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(1),Margin=new Thickness(8)};
-            root.Effect=new DropShadowEffect{BlurRadius=22,Color=Colors.Black,Opacity=0.55,ShadowDepth=4,Direction=270};
-            root.MouseLeftButtonDown+=(s,e)=>{
-                if(e.LeftButton==MouseButtonState.Pressed){
-                    try{
-                        this.DragMove();
-                        LastX=this.Left; LastY=this.Top; HasCustomPosition=true;
-                        GameDictConfig.SavePosition(LastX,LastY);
-                    }catch{}
-                }
-            };
-            Grid g=new Grid{Margin=new Thickness(12,10,12,10)};
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            // Header
-            DockPanel h=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,8)};
-            Border bg=new Border{Width=18,Height=18,CornerRadius=new CornerRadius(4),
-                Background=new SolidColorBrush(Color.FromRgb(99,102,241)),VerticalAlignment=VerticalAlignment.Center};
-            bg.Child=new TextBlock{Text="G",Foreground=Brushes.White,FontSize=10,FontWeight=FontWeights.Bold,
-                HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};
-            DockPanel.SetDock(bg,Dock.Left); h.Children.Add(bg);
-            Button close=new Button{Content="\u2715",Width=26,Height=26,
-                Background=new SolidColorBrush(Color.FromArgb(40,255,255,255)),
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,
-                Foreground=new SolidColorBrush(Color.FromRgb(190,190,205)),FontWeight=FontWeights.Bold};
-            close.MouseEnter+=(s,e)=>close.Background=new SolidColorBrush(Color.FromRgb(180,30,30));
-            close.MouseLeave+=(s,e)=>close.Background=new SolidColorBrush(Color.FromArgb(40,255,255,255));
-            close.Click+=(s,e)=>this.Hide();
-            DockPanel.SetDock(close,Dock.Right); h.Children.Add(close);
-            Grid.SetRow(h,0); g.Children.Add(h);
-            // Preview thumbnail
-            previewImg=new System.Windows.Controls.Image{
-                MaxHeight=100,Stretch=System.Windows.Media.Stretch.Uniform,
-                HorizontalAlignment=HorizontalAlignment.Left};
-            previewBorder=new Border{CornerRadius=new CornerRadius(6),
-                BorderBrush=new SolidColorBrush(Color.FromArgb(50,255,255,255)),
-                BorderThickness=new Thickness(1),Padding=new Thickness(2),
-                Margin=new Thickness(0,0,0,8),Visibility=Visibility.Collapsed};
-            previewBorder.Child=previewImg;
-            Grid.SetRow(previewBorder,1); g.Children.Add(previewBorder);
-            // Content
-            contentBox=new RichTextBox{Background=Brushes.Transparent,
-                BorderThickness=new Thickness(0),IsReadOnly=true,
-                Foreground=new SolidColorBrush(Color.FromRgb(200,200,215)),
-                FontSize=13,FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Padding=new Thickness(2)};
-            ScrollViewer.SetVerticalScrollBarVisibility(contentBox,ScrollBarVisibility.Auto);
-            ScrollViewer.SetHorizontalScrollBarVisibility(contentBox,ScrollBarVisibility.Disabled);
-            Border cc=new Border{CornerRadius=new CornerRadius(8),
-                Background=new SolidColorBrush(Color.FromArgb(20,0,0,0)),Padding=new Thickness(4,2,4,2)};
-            cc.Child=contentBox; Grid.SetRow(cc,2); g.Children.Add(cc);
-            // Footer removed per user request
-            root.Child=g; this.Content=root;
-            this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Hide();};
-        }
-        public void ShowLoading(double cursorX,double cursorY,byte[] imgBytes){
-            this.WindowState=WindowState.Normal; this.Width=420; this.Height=520;
-            if(HasCustomPosition&&LastX>=0&&LastY>=0){
-                // 使用上一次拖拽记住的位置
-                EnsureWithinScreen(LastX,LastY);
-            }else{
-                // 首次未拖拽过时，跟随鼠标附近弹出
-                PositionAt(cursorX,cursorY);
-            }
-            if(imgBytes!=null&&imgBytes.Length>0){
-                try{
-                    var bmp=new System.Windows.Media.Imaging.BitmapImage();
-                    bmp.BeginInit();
-                    bmp.StreamSource=new MemoryStream(imgBytes);
-                    bmp.CacheOption=System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                    bmp.EndInit(); bmp.Freeze();
-                    previewImg.Source=bmp;
-                    previewBorder.Visibility=Visibility.Visible;
-                }catch{previewBorder.Visibility=Visibility.Collapsed;}
-            }else{previewBorder.Visibility=Visibility.Collapsed;}
-            SetRichText("\u231b \u6b63\u5728\u8bc6\u522b\u4e2d...");
-            this.Show();
-            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            if(handle != IntPtr.Zero){
-                ShowWindow(handle, SW_SHOWNOACTIVATE);
-            }
-        }
-        public void ShowResult(string text){SetRichText(text);}
-        private void SetRichText(string raw){
-            var doc=new System.Windows.Documents.FlowDocument();
-            doc.PagePadding=new Thickness(0);
-            string[] lns=raw.Replace("\r\n","\n").Replace("\r","\n").Split('\n');
-            var curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0),LineHeight=double.NaN};
-            bool firstBlock=true;
-            System.Action flushPara=()=>{
-                if(curPara.Inlines.Count>0){doc.Blocks.Add(curPara);firstBlock=false;}
-                curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0,3,0,0),LineHeight=double.NaN};
-            };
-            foreach(string line in lns){
-                string t=line.TrimEnd();
-                if(t.TrimStart('-').Replace("-","").Trim().Length==0&&t.Length>=2&&t.Length<=4){flushPara();continue;}
-                if(t.StartsWith("#### ")){flushPara();AddHeading(doc,t.Substring(5),12.5,Color.FromRgb(160,165,220),new Thickness(0,firstBlock?0:6,0,2));firstBlock=false;continue;}
-                if(t.StartsWith("### ")){flushPara();AddHeading(doc,t.Substring(4),13.5,Color.FromRgb(140,148,255),new Thickness(0,firstBlock?0:8,0,2));firstBlock=false;continue;}
-                if(t.StartsWith("## ")){flushPara();AddHeading(doc,t.Substring(3),14.5,Color.FromRgb(180,186,255),new Thickness(0,firstBlock?0:10,0,2));firstBlock=false;continue;}
-                if(t.Length==0){flushPara();continue;}
-                if(t.StartsWith("- ")||t.StartsWith("* ")){
-                    string content=t.Substring(2);
-                    flushPara();
-                    var bp=new System.Windows.Documents.Paragraph{Margin=new Thickness(12,1,0,1),LineHeight=double.NaN};
-                    var bdot=new System.Windows.Documents.Run("\u2022 ");
-                    bdot.Foreground=new SolidColorBrush(Color.FromRgb(99,102,241));
-                    bp.Inlines.Add(bdot);
-                    AddInlineText(bp,content);
-                    doc.Blocks.Add(bp);firstBlock=false;
-                    curPara=new System.Windows.Documents.Paragraph{Margin=new Thickness(0,3,0,0),LineHeight=double.NaN};
-                    continue;
-                }
-                AddInlineText(curPara,t);
-                curPara.Inlines.Add(new System.Windows.Documents.LineBreak());
-            }
-            if(curPara.Inlines.Count>0)doc.Blocks.Add(curPara);
-            contentBox.Document=doc;
-        }
-        private void AddHeading(System.Windows.Documents.FlowDocument doc,string text,double fs,Color c,Thickness margin){
-            var p=new System.Windows.Documents.Paragraph{Margin=margin,LineHeight=double.NaN};
-            var r=new System.Windows.Documents.Run(text);
-            r.FontWeight=FontWeights.Bold;r.FontSize=fs;r.Foreground=new SolidColorBrush(c);
-            p.Inlines.Add(r); doc.Blocks.Add(p);
-        }
-        private void AddInlineText(System.Windows.Documents.Paragraph para,string text){
-            int i=0;
-            while(i<text.Length){
-                int si=text.IndexOf("**",i);
-                if(si<0){AppendRun(para,text.Substring(i),false);break;}
-                if(si>i)AppendRun(para,text.Substring(i,si-i),false);
-                int ei=text.IndexOf("**",si+2);
-                if(ei<0){AppendRun(para,text.Substring(si),false);break;}
-                AppendRun(para,text.Substring(si+2,ei-si-2),true);
-                i=ei+2;
-            }
-        }
-        private void AppendRun(System.Windows.Documents.Paragraph para,string text,bool bold){
-            if(text.Length==0)return;
-            var r=new System.Windows.Documents.Run(text);
-            if(bold){r.FontWeight=FontWeights.Bold;r.Foreground=new SolidColorBrush(Color.FromRgb(235,238,255));}
-            else{r.Foreground=new SolidColorBrush(Color.FromRgb(200,200,215));}
-            para.Inlines.Add(r);
-        }
-        private void PositionAt(double x,double y){
-            double tx=x+20,ty=y+20;
-            EnsureWithinScreen(tx,ty);
-        }
-        private void EnsureWithinScreen(double targetX,double targetY){
-            double maxX=SystemParameters.PrimaryScreenWidth-Width;
-            double maxY=SystemParameters.PrimaryScreenHeight-Height;
-            if(targetX>maxX)targetX=maxX;
-            if(targetY>maxY)targetY=maxY;
-            if(targetX<0)targetX=0;
-            if(targetY<0)targetY=0;
-            this.Left=targetX; this.Top=targetY;
-        }
+        public string ImagePath{get;set;}
     }
 
     public static class OcrHelper {
-        // Uses Windows.Media.Ocr (WinRT) to extract text from PNG bytes
         public static string ExtractText(byte[] pngBytes) {
             try{
                 string tmp=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"gamedict_ocr_in.png");
                 System.IO.File.WriteAllBytes(tmp,pngBytes);
-                // Build powershell command as single-line string
                 string ps=
                     "Add-Type -AssemblyName System.Runtime.WindowsRuntime; " +
                     "[void][Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]; " +
@@ -1103,7 +1245,8 @@ namespace GameDictApp {
                     sw.Write(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" ["+lv+"] "+m+"\n");
             }}catch{}}
     }
-    internal static class EmbeddedIcon {
+
+internal static class EmbeddedIcon {
         public static readonly string IcoB64 = "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";
         public static string ExtractToTemp(){
             try{
