@@ -1402,7 +1402,7 @@ namespace OmniDictApp {
         private const int SW_SHOWNOACTIVATE = 4;
 
         public FloatingResultWindow() {
-            this.Title = "OmniDict Float"; this.Width = 440; this.Height = 680;
+            this.Title = "OmniDict Float"; this.Width = 560; this.Height = 700;
             this.WindowStyle = WindowStyle.None; this.AllowsTransparency = true;
             this.Background = Brushes.Transparent; this.Topmost = true;
             this.ShowInTaskbar = false; this.ResizeMode = ResizeMode.NoResize;
@@ -1467,11 +1467,12 @@ namespace OmniDictApp {
 
             // Preview thumbnail
             previewImg = new System.Windows.Controls.Image {
-                MaxHeight = 64, MaxWidth = 260, Stretch = System.Windows.Media.Stretch.Uniform,
+                MaxHeight = 52, MaxWidth = 140, Stretch = System.Windows.Media.Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Left };
             previewBorder = new Border {
                 CornerRadius = new CornerRadius(6),
-                BorderThickness = new Thickness(1), Padding = new Thickness(2),
+                BorderThickness = new Thickness(1), Padding = new Thickness(1),
+                Height = 54, VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed };
             previewBorder.Child = previewImg;
             Grid.SetRow(previewBorder, 1); g.Children.Add(previewBorder);
@@ -1523,7 +1524,7 @@ namespace OmniDictApp {
         }
 
         public void ShowLoading(double cursorX, double cursorY, byte[] imgBytes) {
-            this.WindowState = WindowState.Normal; this.Width = 440; this.Height = GetPreferredHeight();
+            this.WindowState = WindowState.Normal; this.Width = 560; this.Height = GetPreferredHeight();
             if (HasCustomPosition && LastX >= 0 && LastY >= 0) {
                 EnsureWithinScreen(LastX, LastY);
             } else {
