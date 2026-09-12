@@ -417,6 +417,9 @@ namespace OmniDictApp {
         private Grid panel1, panel2, panel3, panel4;
         private TextBlock viewHeaderTitle;
         private Border sidebarBorder;
+        private TextBlock brandTitleText;
+        private Button winMinBtn;
+        private Button winCloseBtn;
 
         // Settings inputs
         private TextBox setApiBaseBox, setApiKeyBox, setModelBox;
@@ -529,11 +532,11 @@ namespace OmniDictApp {
                 FontSize=12, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center};
             brandHdr.Children.Add(brandBadge);
 
-            TextBlock brandTitle = new TextBlock{
+            brandTitleText = new TextBlock{
                 Text="OmniDict", FontWeight=FontWeights.SemiBold, FontSize=15,
                 VerticalAlignment=VerticalAlignment.Center,
                 FontFamily=new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei")};
-            brandHdr.Children.Add(brandTitle);
+            brandHdr.Children.Add(brandTitleText);
             Grid.SetRow(brandHdr, 0); sidebarGrid.Children.Add(brandHdr);
 
             // Nav Items Stack
@@ -586,17 +589,17 @@ namespace OmniDictApp {
 
             // Window Caption Buttons
             StackPanel winControls = new StackPanel{Orientation=Orientation.Horizontal};
-            Button minBtn = new Button{
-                Content="—", Width=32, Height=28, Background=Brushes.Transparent,
+            winMinBtn = new Button{
+                Content="—", Width=34, Height=28, Background=Brushes.Transparent,
                 BorderThickness=new Thickness(0), Cursor=Cursors.Hand, FontSize=11};
-            minBtn.Click += (s, e) => this.WindowState = WindowState.Minimized;
-            winControls.Children.Add(minBtn);
+            winMinBtn.Click += (s, e) => this.WindowState = WindowState.Minimized;
+            winControls.Children.Add(winMinBtn);
 
-            Button closeBtn = new Button{
-                Content="✕", Width=32, Height=28, Background=Brushes.Transparent,
+            winCloseBtn = new Button{
+                Content="✕", Width=34, Height=28, Background=Brushes.Transparent,
                 BorderThickness=new Thickness(0), Cursor=Cursors.Hand, FontSize=12};
-            closeBtn.Click += (s, e) => this.Hide();
-            winControls.Children.Add(closeBtn);
+            winCloseBtn.Click += (s, e) => this.Hide();
+            winControls.Children.Add(winCloseBtn);
 
             DockPanel.SetDock(winControls, Dock.Right); rightHeader.Children.Add(winControls);
             Grid.SetRow(rightHeader, 0); rightPanel.Children.Add(rightHeader);
@@ -1202,7 +1205,20 @@ namespace OmniDictApp {
                 sidebarBorder.Background = new SolidColorBrush(isDark ? Color.FromRgb(26,26,26) : Color.FromRgb(238,238,238));
                 sidebarBorder.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
             }
-            viewHeaderTitle.Foreground = new SolidColorBrush(Win11Theme.FgPrimary);
+            if (brandTitleText != null) {
+                brandTitleText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(0, 0, 0));
+            }
+            viewHeaderTitle.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(0, 0, 0));
+
+            if (winMinBtn != null && winCloseBtn != null) {
+                SolidColorBrush fgBrush = new SolidColorBrush(isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(0, 0, 0));
+                winMinBtn.Foreground = fgBrush;
+                winCloseBtn.Foreground = fgBrush;
+                winCloseBtn.MouseEnter += (s, e) => { winCloseBtn.Background = new SolidColorBrush(Color.FromRgb(196, 43, 28)); winCloseBtn.Foreground = Brushes.White; };
+                winCloseBtn.MouseLeave += (s, e) => { winCloseBtn.Background = Brushes.Transparent; winCloseBtn.Foreground = fgBrush; };
+                winMinBtn.MouseEnter += (s, e) => { winMinBtn.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0)); };
+                winMinBtn.MouseLeave += (s, e) => { winMinBtn.Background = Brushes.Transparent; };
+            }
             
             if (setVisionToggle != null) setVisionToggle.UpdateVisual();
             SwitchNav(panel1.Visibility == Visibility.Visible ? 1 : (panel2.Visibility == Visibility.Visible ? 2 : (panel3.Visibility == Visibility.Visible ? 3 : 4)));
