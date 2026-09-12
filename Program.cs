@@ -619,7 +619,20 @@ namespace OmniDictApp {
                     string result=PostAI(body);
                     Logger.Info("AI chars="+result.Length);
                     byte[] _ib3=imgBytes;string _r3=result;this.Dispatcher.Invoke(()=>{fw.ShowResult(_r3);AddHistory("截图","[屏幕解析]",_r3,_ib3);});
-                }catch(Exception ex){Logger.Error("AnalyzeFloating",ex);this.Dispatcher.Invoke(()=>fw.ShowResult("解析失败: "+ex.Message));}
+                }catch(Exception ex){
+                    Logger.Error("AnalyzeFloating",ex);
+                    byte[] retryBytes = imgBytes;
+                    this.Dispatcher.Invoke(()=>{
+                        string msg = "解析失败: " + ex.Message;
+                        if (ex is WebException && ex.Message.Contains("超时")) {
+                            msg = "解析失败: 请求远程模型超时，可能是网络波动或服务繁忙。";
+                        }
+                        fw.ShowError(msg, ()=>{
+                            fw.ShowLoading(-1, -1, retryBytes);
+                            AnalyzeImageForFloating(fw, retryBytes);
+                        });
+                    });
+                }
             });
         }
 
@@ -627,7 +640,7 @@ namespace OmniDictApp {
             var req=(HttpWebRequest)WebRequest.Create(apiBase);
             req.Method="POST";req.ContentType="application/json";
             req.Headers["Authorization"]="Bearer "+apiKey;
-            req.UserAgent="Codex/1.0";req.Timeout=60000;
+            req.UserAgent="Codex/1.0";req.Timeout=90000;
             Logger.Info("PostAI body_len="+jsonBody.Length+" model="+currentModel+" base="+apiBase);
             byte[] data=new UTF8Encoding(false).GetBytes(jsonBody);
             req.ContentLength=data.Length;
@@ -1562,6 +1575,38 @@ namespace OmniDictApp {
         }
 
         public void ShowResult(string text) { SetRichText(text); }
+
+        public void ShowError(string errorMsg, Action onRetry) {
+            bool isDark = Win11Theme.IsDarkTheme;
+            var doc = new System.Windows.Documents.FlowDocument();
+            doc.PagePadding = new Thickness(0);
+
+            var p = new System.Windows.Documents.Paragraph { Margin = new Thickness(4, 8, 4, 12), LineHeight = 22 };
+            var errRun = new System.Windows.Documents.Run(errorMsg);
+            errRun.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(255, 140, 140) : Color.FromRgb(210, 40, 40));
+            errRun.FontSize = 13.5;
+            p.Inlines.Add(errRun);
+            doc.Blocks.Add(p);
+
+            if (onRetry != null) {
+                var btnPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(4, 0, 4, 8) };
+                var retryBtn = new Button {
+                    Content = "重试解析",
+                    Width = 96,
+                    Height = 32,
+                    Cursor = Cursors.Hand };
+                retryBtn.Style = Win11Theme.CreateButtonStyle(true);
+                retryBtn.Click += (s, e) => {
+                    retryBtn.IsEnabled = false;
+                    retryBtn.Content = "正在重试...";
+                    onRetry();
+                };
+                btnPara.Inlines.Add(new System.Windows.Documents.InlineUIContainer(retryBtn));
+                doc.Blocks.Add(btnPara);
+            }
+
+            contentBox.Document = doc;
+        }
 
         private void SetRichText(string raw) {
             bool isDark = Win11Theme.IsDarkTheme;
