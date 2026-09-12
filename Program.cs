@@ -1415,11 +1415,12 @@ namespace OmniDictApp {
         private const int SW_SHOWNOACTIVATE = 4;
 
         public FloatingResultWindow() {
-            this.Title = "OmniDict Float"; this.Width = 560; this.Height = 700;
+            this.Title = "OmniDict Float";
             this.WindowStyle = WindowStyle.None; this.AllowsTransparency = true;
             this.Background = Brushes.Transparent; this.Topmost = true;
             this.ShowInTaskbar = false; this.ResizeMode = ResizeMode.NoResize;
             this.Focusable = false;
+            this.SizeToContent = SizeToContent.WidthAndHeight;
             this.SourceInitialized += (s, e) => {
                 var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
                 int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
@@ -1540,12 +1541,29 @@ namespace OmniDictApp {
             return preferred;
         }
 
+        private double lastOriginX = -1;
+        private double lastOriginY = -1;
+
         public void ShowLoading(double cursorX, double cursorY, byte[] imgBytes) {
-            this.WindowState = WindowState.Normal; this.Width = 560; this.Height = GetPreferredHeight();
+            this.WindowState = WindowState.Normal;
+            if (cursorX >= 0 && cursorY >= 0) {
+                lastOriginX = cursorX;
+                lastOriginY = cursorY;
+            }
+            // Compact pill size for loading
+            this.ClearValue(Window.WidthProperty);
+            this.ClearValue(Window.HeightProperty);
+            contentBox.ClearValue(FrameworkElement.HeightProperty);
+            contentBox.ClearValue(FrameworkElement.MaxHeightProperty);
+            root.Width = 260;
+            root.ClearValue(FrameworkElement.HeightProperty);
+            root.ClearValue(FrameworkElement.MaxHeightProperty);
+            this.SizeToContent = SizeToContent.WidthAndHeight;
+
             if (HasCustomPosition && LastX >= 0 && LastY >= 0) {
                 EnsureWithinScreen(LastX, LastY);
             } else {
-                PositionAt(cursorX, cursorY);
+                PositionAt(lastOriginX, lastOriginY);
             }
             if (imgBytes != null && imgBytes.Length > 0) {
                 try {
@@ -1574,7 +1592,36 @@ namespace OmniDictApp {
             }
         }
 
-        public void ShowResult(string text) { SetRichText(text); }
+        public void ShowResult(string text) {
+            AdaptSizeToContent(text);
+            SetRichText(text);
+        }
+
+        private void AdaptSizeToContent(string text) {
+            int len = string.IsNullOrEmpty(text) ? 0 : text.Length;
+            double targetWidth = len < 80 ? 360 : (len < 250 ? 460 : 540);
+            double workHeight = SystemParameters.WorkArea.Height;
+            double maxContentH = workHeight * 0.76;
+            if (maxContentH < 380) maxContentH = 380;
+
+            this.ClearValue(Window.WidthProperty);
+            this.ClearValue(Window.HeightProperty);
+            root.Width = targetWidth;
+            root.ClearValue(FrameworkElement.HeightProperty);
+            root.ClearValue(FrameworkElement.MaxHeightProperty);
+            contentBox.ClearValue(FrameworkElement.HeightProperty);
+            contentBox.MaxHeight = maxContentH;
+            this.SizeToContent = SizeToContent.WidthAndHeight;
+
+            // Re-check bounds with new size
+            this.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => {
+                if (HasCustomPosition && LastX >= 0 && LastY >= 0) {
+                    EnsureWithinScreen(LastX, LastY);
+                } else if (lastOriginX >= 0 && lastOriginY >= 0) {
+                    EnsureWithinScreen(lastOriginX + 20, lastOriginY + 20);
+                }
+            }));
+        }
 
         public void ShowError(string errorMsg, Action onRetry) {
             bool isDark = Win11Theme.IsDarkTheme;
