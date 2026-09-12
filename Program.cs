@@ -304,6 +304,85 @@ namespace OmniDictApp {
         }
     }
 
+
+    public class ToggleSwitch : UserControl {
+        private Border track;
+        private System.Windows.Shapes.Ellipse thumb;
+        private TextBlock statusText;
+        private bool _isChecked;
+
+        public event Action<bool> CheckedChanged;
+
+        public bool IsChecked {
+            get { return _isChecked; }
+            set {
+                if (_isChecked != value) {
+                    _isChecked = value;
+                    UpdateVisual();
+                    if (CheckedChanged != null) CheckedChanged(_isChecked);
+                }
+            }
+        }
+
+        public ToggleSwitch(bool initial = false) {
+            _isChecked = initial;
+            this.Cursor = Cursors.Hand;
+            var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+            statusText = new TextBlock {
+                Text = _isChecked ? "启用" : "关闭",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")
+            };
+            sp.Children.Add(statusText);
+
+            track = new Border {
+                Width = 40, Height = 20,
+                CornerRadius = new CornerRadius(10),
+                BorderThickness = new Thickness(1),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var canvas = new Canvas { Width = 40, Height = 20 };
+            thumb = new System.Windows.Shapes.Ellipse { Width = 12, Height = 12 };
+            Canvas.SetTop(thumb, 3);
+            canvas.Children.Add(thumb);
+            track.Child = canvas;
+
+            sp.Children.Add(track);
+            this.Content = sp;
+
+            this.MouseLeftButtonDown += (s, e) => {
+                IsChecked = !IsChecked;
+            };
+
+            UpdateVisual();
+        }
+
+        public void UpdateVisual() {
+            bool isDark = Win11Theme.IsDarkTheme;
+            if (statusText != null) {
+                statusText.Text = _isChecked ? "启用" : "关闭";
+                statusText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 220) : Color.FromRgb(40, 40, 40));
+            }
+            if (track != null && thumb != null) {
+                if (_isChecked) {
+                    track.Background = new SolidColorBrush(Color.FromRgb(227, 85, 54));
+                    track.BorderBrush = new SolidColorBrush(Color.FromRgb(227, 85, 54));
+                    thumb.Fill = Brushes.White;
+                    Canvas.SetLeft(thumb, 22);
+                } else {
+                    track.Background = new SolidColorBrush(isDark ? Color.FromRgb(45, 45, 45) : Color.FromRgb(230, 230, 230));
+                    track.BorderBrush = new SolidColorBrush(isDark ? Color.FromRgb(100, 100, 100) : Color.FromRgb(160, 160, 160));
+                    thumb.Fill = new SolidColorBrush(isDark ? Color.FromRgb(200, 200, 200) : Color.FromRgb(90, 90, 90));
+                    Canvas.SetLeft(thumb, 4);
+                }
+            }
+        }
+    }
+
     public class MainWindow : Window {
         private const int  HOTKEY_ID_ALT_Q  = 9002;
         private const int  HOTKEY_ID_ALT_W  = 9003;
@@ -315,6 +394,7 @@ namespace OmniDictApp {
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT lpPoint);
         [DllImport("user32.dll")] private static extern uint GetClipboardSequenceNumber();
         [StructLayout(LayoutKind.Sequential)] public struct POINT{public int X,Y;}
+
         private TextBlock  statusText;
         private ListBox    historyList;
         private List<HistoryEntry> historyItems=new List<HistoryEntry>();
@@ -322,12 +402,31 @@ namespace OmniDictApp {
         private IntPtr     windowHandle;
         private System.Windows.Forms.NotifyIcon trayIcon;
         public FloatingResultWindow floatingWin;
+
         public string currentModel="gemini-3.8-flash-high";
         public string apiKey="";
         public string apiBase="https://ai.kncloud.top/v1/chat/completions";
         public bool   useVision=true;
         public string currentPresetName="游戏本地化与攻略私教";
         public List<PromptPreset> promptPresets=new List<PromptPreset>();
+
+        // Navigation elements (Win11 Twinkle Tray style)
+        private Border navItem1, navItem2, navItem3, navItem4;
+        private TextBlock navText1, navText2, navText3, navText4;
+        private Border ind1, ind2, ind3, ind4;
+        private Grid panel1, panel2, panel3, panel4;
+        private TextBlock viewHeaderTitle;
+        private Border sidebarBorder;
+
+        // Settings inputs
+        private TextBox setApiBaseBox, setApiKeyBox, setModelBox;
+        private TextBox setPresetNameText;
+        private TextBox setPromptBox;
+        private ToggleSwitch setVisionToggle;
+        private ListBox setModelListBox;
+        private System.Windows.Controls.Primitives.Popup setModelPopup;
+        private ListBox setPresetListBox;
+        private System.Windows.Controls.Primitives.Popup setPresetPopup;
 
         public MainWindow() {
             try{byte[] _ib=Convert.FromBase64String(EmbeddedIcon.IcoB64);var _ms=new System.IO.MemoryStream(_ib);var _dec=new System.Windows.Media.Imaging.IconBitmapDecoder(_ms,System.Windows.Media.Imaging.BitmapCreateOptions.None,System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);if(_dec.Frames.Count>0){var _fr=_dec.Frames[0];_fr.Freeze();this.Icon=_fr;}}catch(Exception _ex){Logger.Error("WindowIcon",_ex);}
@@ -344,7 +443,7 @@ namespace OmniDictApp {
             var saved=HistoryStore.Load();
             for(int _i=saved.Count-1;_i>=0;_i--){var he=saved[_i];historyItems.Insert(0,he);RebuildHistoryItem(he);}
             if(historyItems.Count>0)this.Dispatcher.BeginInvoke(new System.Action(()=>{
-                if(statusText!=null)statusText.Text="历史: "+historyItems.Count+" 条";
+                if(statusText!=null)statusText.Text="历史记录: "+historyItems.Count+" 条";
             }));
         }
 
@@ -386,112 +485,727 @@ namespace OmniDictApp {
             } catch(Exception ex) { Logger.Error("LoadOmniConfig",ex); }
         }
 
-        private TextBlock titleText;
-        private Border listContainer;
-        private Button mainSetBtn;
-        private Button mainClearBtn;
-        private Button mainCloseBtn;
-
         private void InitUI() {
-            this.Title="OmniDict AI"; this.Width=480; this.Height=560;
+            this.Title="OmniDict AI";
+            this.Width=820;
+            this.Height=580;
+            this.MinWidth=720;
+            this.MinHeight=500;
             this.WindowStartupLocation=WindowStartupLocation.CenterScreen;
-            this.WindowStyle=WindowStyle.None; this.AllowsTransparency=true;
-            this.Background=Brushes.Transparent; this.Topmost=false;
+            this.WindowStyle=WindowStyle.None;
+            this.AllowsTransparency=true;
+            this.Background=Brushes.Transparent;
+            this.Topmost=false;
 
-            rootBorder=new Border { CornerRadius=new CornerRadius(12),
-                BorderThickness=new Thickness(1), Margin=new Thickness(10) };
-            rootBorder.Effect=new DropShadowEffect{BlurRadius=20,Color=Colors.Black,Opacity=0.35,ShadowDepth=4,Direction=270};
-            rootBorder.MouseLeftButtonDown+=(s,e)=>{ if(e.LeftButton==MouseButtonState.Pressed) try{this.DragMove();}catch{} };
+            rootBorder=new Border {
+                CornerRadius=new CornerRadius(12),
+                BorderThickness=new Thickness(1),
+                Margin=new Thickness(10) };
+            rootBorder.Effect=new DropShadowEffect{BlurRadius=24,Color=Colors.Black,Opacity=0.45,ShadowDepth=4,Direction=270};
 
-            Grid g=new Grid{Margin=new Thickness(16,12,16,12)};
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            Grid mainLayout = new Grid();
+            mainLayout.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(210)}); // Left Sidebar
+            mainLayout.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1, GridUnitType.Star)}); // Right Content
 
-            // Header
-            DockPanel header=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,12)};
-            StackPanel left=new StackPanel{Orientation=Orientation.Horizontal};
-            Border badge=new Border{Width=24,Height=24,CornerRadius=new CornerRadius(6),
-                Background=new SolidColorBrush(Color.FromRgb(0,103,192)),Margin=new Thickness(0,0,8,0)};
-            badge.Child=new TextBlock{Text="O",Foreground=Brushes.White,FontWeight=FontWeights.Bold,
-                HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,FontSize=12};
-            left.Children.Add(badge);
-            titleText=new TextBlock{Text="OmniDict AI",FontWeight=FontWeights.SemiBold,FontSize=14,
-                VerticalAlignment=VerticalAlignment.Center};
-            left.Children.Add(titleText);
-            DockPanel.SetDock(left,Dock.Left); header.Children.Add(left);
+            // === LEFT NAVIGATION SIDEBAR (Twinkle Tray / Win11 Settings) ===
+            sidebarBorder = new Border{
+                CornerRadius=new CornerRadius(11,0,0,11),
+                BorderThickness=new Thickness(0,0,1,0),
+                Padding=new Thickness(10,14,10,14)};
+            sidebarBorder.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) try { this.DragMove(); } catch {} };
 
-            StackPanel right=new StackPanel{Orientation=Orientation.Horizontal};
-            mainSetBtn=new Button{Content="设置",Height=26,Padding=new Thickness(10,0,10,0),
-                Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
-            mainSetBtn.Click+=(s,e)=>{var d=new SettingsDialog(this);d.Owner=this;d.ShowDialog();};
-            right.Children.Add(mainSetBtn);
+            Grid sidebarGrid = new Grid();
+            sidebarGrid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto}); // App Title
+            sidebarGrid.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1, GridUnitType.Star)}); // Nav items
+            sidebarGrid.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto}); // Footer
 
-            mainCloseBtn=new Button{Content="✕",Width=28,Height=26,Background=Brushes.Transparent,
-                BorderThickness=new Thickness(0),Cursor=Cursors.Hand,FontWeight=FontWeights.Normal,FontSize=12};
-            mainCloseBtn.Click+=(s,e)=>this.Hide();
-            right.Children.Add(mainCloseBtn);
-            DockPanel.SetDock(right,Dock.Right); header.Children.Add(right);
-            Grid.SetRow(header,0); g.Children.Add(header);
+            // App Brand Header
+            DockPanel brandHdr = new DockPanel{LastChildFill=false, Margin=new Thickness(6,0,0,20)};
+            Border brandBadge = new Border{
+                Width=24, Height=24, CornerRadius=new CornerRadius(6),
+                Background=new SolidColorBrush(Color.FromRgb(0,103,192)),
+                Margin=new Thickness(0,0,10,0), VerticalAlignment=VerticalAlignment.Center};
+            brandBadge.Child = new TextBlock{Text="O", Foreground=Brushes.White, FontWeight=FontWeights.Bold,
+                FontSize=12, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center};
+            brandHdr.Children.Add(brandBadge);
 
-            // Toolbar
-            DockPanel toolbar=new DockPanel{LastChildFill=false,Margin=new Thickness(0,0,0,10)};
-            Button snipBtn=new Button{Content="截图解析 (Alt+Q)",Height=32,Padding=new Thickness(16,0,16,0),
-                Cursor=Cursors.Hand,Margin=new Thickness(0,0,8,0)};
-            snipBtn.Style=Win11Theme.CreateButtonStyle(true);
-            snipBtn.Click+=(s,e)=>TriggerSnipAndAnalyze();
-            DockPanel.SetDock(snipBtn,Dock.Left); toolbar.Children.Add(snipBtn);
+            TextBlock brandTitle = new TextBlock{
+                Text="OmniDict", FontWeight=FontWeights.SemiBold, FontSize=15,
+                VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei")};
+            brandHdr.Children.Add(brandTitle);
+            Grid.SetRow(brandHdr, 0); sidebarGrid.Children.Add(brandHdr);
 
-            mainClearBtn=new Button{Content="清空历史",Height=32,Padding=new Thickness(14,0,14,0),Cursor=Cursors.Hand};
-            mainClearBtn.Click+=(s,e)=>{historyItems.Clear();historyList.Items.Clear();statusText.Text="历史已清空";HistoryStore.Save(historyItems);};
-            DockPanel.SetDock(mainClearBtn,Dock.Left); toolbar.Children.Add(mainClearBtn);
-            Grid.SetRow(toolbar,1); g.Children.Add(toolbar);
+            // Nav Items Stack
+            StackPanel navStack = new StackPanel();
+            navItem1 = CreateNavItem("⏱", "解析历史", out navText1, out ind1);
+            navItem2 = CreateNavItem("⚙", "通用设置", out navText2, out ind2);
+            navItem3 = CreateNavItem("📝", "提示词预设", out navText3, out ind3);
+            navItem4 = CreateNavItem("⌨", "快捷键与操作", out navText4, out ind4);
 
-            // History ListBox
-            historyList=new ListBox{Background=Brushes.Transparent,BorderThickness=new Thickness(0),
-                Padding=new Thickness(0)};
-            ScrollViewer.SetHorizontalScrollBarVisibility(historyList,ScrollBarVisibility.Disabled);
-            historyList.SelectionChanged+=(s,e)=>{
-                if(historyList.SelectedIndex<0) return;
-                int ri=historyItems.Count-1-historyList.SelectedIndex;
-                if(ri<0||ri>=historyItems.Count) return;
-                new HistoryDetailWindow(historyItems[ri]){Owner=this}.ShowDialog();
-                historyList.SelectedIndex=-1;
-            };
-            ScrollViewer sv=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
-            sv.Content=historyList;
-            listContainer=new Border{CornerRadius=new CornerRadius(8),
-                BorderThickness=new Thickness(1),Padding=new Thickness(4)};
-            listContainer.Child=sv; Grid.SetRow(listContainer,2); g.Children.Add(listContainer);
+            navItem1.MouseLeftButtonDown += (s, e) => SwitchNav(1);
+            navItem2.MouseLeftButtonDown += (s, e) => SwitchNav(2);
+            navItem3.MouseLeftButtonDown += (s, e) => SwitchNav(3);
+            navItem4.MouseLeftButtonDown += (s, e) => SwitchNav(4);
 
-            // Footer
-            DockPanel footer=new DockPanel{LastChildFill=false,Margin=new Thickness(0,8,0,0)};
-            statusText=new TextBlock{Text="预设: "+currentPresetName,FontSize=11};
-            DockPanel.SetDock(statusText,Dock.Left); footer.Children.Add(statusText);
-            Grid.SetRow(footer,3); g.Children.Add(footer);
+            navStack.Children.Add(navItem1);
+            navStack.Children.Add(navItem2);
+            navStack.Children.Add(navItem3);
+            navStack.Children.Add(navItem4);
+            Grid.SetRow(navStack, 1); sidebarGrid.Children.Add(navStack);
 
-            rootBorder.Child=g; this.Content=rootBorder;
-            this.KeyDown+=(s,e)=>{ if(e.Key==Key.Escape) this.Hide(); };
+            // Sidebar Footer Action
+            StackPanel sideFooter = new StackPanel();
+            Button sideSnipBtn = new Button{
+                Content="截图解析 (Alt+Q)",
+                Height=34, Margin=new Thickness(0,0,0,4)};
+            sideSnipBtn.Style = Win11Theme.CreateButtonStyle(true);
+            sideSnipBtn.Click += (s, e) => TriggerSnipAndAnalyze();
+            sideFooter.Children.Add(sideSnipBtn);
 
+            Grid.SetRow(sideFooter, 2); sidebarGrid.Children.Add(sideFooter);
+            sidebarBorder.Child = sidebarGrid;
+            Grid.SetColumn(sidebarBorder, 0); mainLayout.Children.Add(sidebarBorder);
+
+            // === RIGHT CONTENT PANELS ===
+            Grid rightPanel = new Grid{Margin=new Thickness(24,14,24,16)};
+            rightPanel.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto}); // Window Caption & Controls
+            rightPanel.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1, GridUnitType.Star)}); // Active View Area
+
+            // Right Header (Caption + Controls)
+            DockPanel rightHeader = new DockPanel{LastChildFill=false, Margin=new Thickness(0,0,0,16)};
+            rightHeader.MouseLeftButtonDown += (s, e) => { if (e.LeftButton == MouseButtonState.Pressed) try { this.DragMove(); } catch {} };
+
+            viewHeaderTitle = new TextBlock{
+                Text="解析历史",
+                FontSize=20,
+                FontWeight=FontWeights.SemiBold,
+                VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei")};
+            DockPanel.SetDock(viewHeaderTitle, Dock.Left); rightHeader.Children.Add(viewHeaderTitle);
+
+            // Window Caption Buttons
+            StackPanel winControls = new StackPanel{Orientation=Orientation.Horizontal};
+            Button minBtn = new Button{
+                Content="—", Width=32, Height=28, Background=Brushes.Transparent,
+                BorderThickness=new Thickness(0), Cursor=Cursors.Hand, FontSize=11};
+            minBtn.Click += (s, e) => this.WindowState = WindowState.Minimized;
+            winControls.Children.Add(minBtn);
+
+            Button closeBtn = new Button{
+                Content="✕", Width=32, Height=28, Background=Brushes.Transparent,
+                BorderThickness=new Thickness(0), Cursor=Cursors.Hand, FontSize=12};
+            closeBtn.Click += (s, e) => this.Hide();
+            winControls.Children.Add(closeBtn);
+
+            DockPanel.SetDock(winControls, Dock.Right); rightHeader.Children.Add(winControls);
+            Grid.SetRow(rightHeader, 0); rightPanel.Children.Add(rightHeader);
+
+            // Panel 1: 历史记录
+            panel1 = BuildHistoryPanel();
+            Grid.SetRow(panel1, 1); rightPanel.Children.Add(panel1);
+
+            // Panel 2: 常规设置 (Win11 SettingsCards + ToggleSwitch)
+            panel2 = BuildGeneralSettingsPanel();
+            Grid.SetRow(panel2, 1); rightPanel.Children.Add(panel2);
+
+            // Panel 3: 提示词预设
+            panel3 = BuildPromptPresetsPanel();
+            Grid.SetRow(panel3, 1); rightPanel.Children.Add(panel3);
+
+            // Panel 4: 快捷键速览
+            panel4 = BuildHotkeysPanel();
+            Grid.SetRow(panel4, 1); rightPanel.Children.Add(panel4);
+
+            Grid.SetColumn(rightPanel, 1); mainLayout.Children.Add(rightPanel);
+            rootBorder.Child = mainLayout;
+            this.Content = rootBorder;
+
+            this.KeyDown += (s, e) => { if (e.Key == Key.Escape) this.Hide(); };
+
+            SwitchNav(1);
             ApplyTheme();
         }
 
+        private Border CreateNavItem(string icon, string title, out TextBlock tb, out Border indicator) {
+            Border item = new Border{
+                CornerRadius=new CornerRadius(6),
+                Padding=new Thickness(10,8,10,8),
+                Margin=new Thickness(0,2,0,2),
+                Cursor=Cursors.Hand};
+
+            Grid ig = new Grid();
+            ig.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+            ig.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+            ig.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1, GridUnitType.Star)});
+
+            indicator = new Border{
+                Width=3, Height=16, CornerRadius=new CornerRadius(1.5),
+                Background=new SolidColorBrush(Color.FromRgb(227,85,54)),
+                Margin=new Thickness(-6,0,8,0),
+                Visibility=Visibility.Collapsed};
+            Grid.SetColumn(indicator, 0); ig.Children.Add(indicator);
+
+            TextBlock ic = new TextBlock{
+                Text=icon, FontSize=14, Width=20, Margin=new Thickness(0,0,10,0),
+                VerticalAlignment=VerticalAlignment.Center};
+            Grid.SetColumn(ic, 1); ig.Children.Add(ic);
+
+            tb = new TextBlock{
+                Text=title, FontSize=13, FontWeight=FontWeights.Normal,
+                VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            Grid.SetColumn(tb, 2); ig.Children.Add(tb);
+
+            item.Child = ig;
+            return item;
+        }
+
+        public void SwitchNav(int index) {
+            bool isDark = Win11Theme.IsDarkTheme;
+            panel1.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
+            panel2.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
+            panel3.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
+            panel4.Visibility = index == 4 ? Visibility.Visible : Visibility.Collapsed;
+
+            if (index == 1) viewHeaderTitle.Text = "解析历史";
+            else if (index == 2) viewHeaderTitle.Text = "通用设置";
+            else if (index == 3) viewHeaderTitle.Text = "提示词预设管理";
+            else if (index == 4) viewHeaderTitle.Text = "快捷键与操作指南";
+
+            UpdateNavItemState(navItem1, navText1, ind1, index == 1, isDark);
+            UpdateNavItemState(navItem2, navText2, ind2, index == 2, isDark);
+            UpdateNavItemState(navItem3, navText3, ind3, index == 3, isDark);
+            UpdateNavItemState(navItem4, navText4, ind4, index == 4, isDark);
+        }
+
+        private void UpdateNavItemState(Border item, TextBlock text, Border ind, bool active, bool isDark) {
+            ind.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            if (active) {
+                item.Background = new SolidColorBrush(isDark ? Color.FromArgb(45, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
+                text.FontWeight = FontWeights.SemiBold;
+                text.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(10, 10, 10));
+            } else {
+                item.Background = Brushes.Transparent;
+                text.FontWeight = FontWeights.Normal;
+                text.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(185, 185, 195) : Color.FromRgb(80, 80, 90));
+            }
+        }
+
+        private Grid BuildHistoryPanel() {
+            Grid g = new Grid();
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1, GridUnitType.Star)});
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+
+            DockPanel tb = new DockPanel{LastChildFill=false, Margin=new Thickness(0,0,0,10)};
+            Button clearBtn = new Button{Content="清空记录", Height=30, Padding=new Thickness(14,0,14,0)};
+            clearBtn.Style = Win11Theme.CreateButtonStyle(false);
+            clearBtn.Click += (s, e) => {
+                historyItems.Clear(); historyList.Items.Clear();
+                statusText.Text = "历史已清空";
+                HistoryStore.Save(historyItems);
+            };
+            DockPanel.SetDock(clearBtn, Dock.Left); tb.Children.Add(clearBtn);
+
+            TextBlock tip = new TextBlock{
+                Text="提示：点击卡片可查看完整释义与大图",
+                FontSize=11.5, Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
+                VerticalAlignment=VerticalAlignment.Center};
+            DockPanel.SetDock(tip, Dock.Right); tb.Children.Add(tip);
+            Grid.SetRow(tb, 0); g.Children.Add(tb);
+
+            historyList = new ListBox{
+                Background=Brushes.Transparent, BorderThickness=new Thickness(0), Padding=new Thickness(0)};
+            ScrollViewer.SetHorizontalScrollBarVisibility(historyList, ScrollBarVisibility.Disabled);
+            historyList.SelectionChanged += (s, e) => {
+                if (historyList.SelectedIndex < 0) return;
+                int ri = historyItems.Count - 1 - historyList.SelectedIndex;
+                if (ri < 0 || ri >= historyItems.Count) return;
+                new HistoryDetailWindow(historyItems[ri]){Owner=this}.ShowDialog();
+                historyList.SelectedIndex = -1;
+            };
+
+            ScrollViewer sv = new ScrollViewer{
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,
+                Content=historyList};
+
+            Border container = new Border{
+                CornerRadius=new CornerRadius(8),
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1), Padding=new Thickness(4)};
+            container.Child = sv;
+            Grid.SetRow(container, 1); g.Children.Add(container);
+
+            DockPanel foot = new DockPanel{LastChildFill=false, Margin=new Thickness(0,8,0,0)};
+            statusText = new TextBlock{Text="历史记录: "+historyItems.Count+" 条", FontSize=11.5, Foreground=new SolidColorBrush(Win11Theme.FgTertiary)};
+            DockPanel.SetDock(statusText, Dock.Left); foot.Children.Add(statusText);
+            Grid.SetRow(foot, 2); g.Children.Add(foot);
+
+            return g;
+        }
+
+        private Grid BuildGeneralSettingsPanel() {
+            Grid g = new Grid();
+            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1, GridUnitType.Star)});
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+
+            ScrollViewer sv = new ScrollViewer{
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+
+            StackPanel sp = new StackPanel();
+
+            // Card 1: 图像模式 (Twinkle Tray 风格 ToggleSwitch)
+            StackPanel cardVision = new StackPanel();
+            setVisionToggle = new ToggleSwitch(useVision);
+            cardVision.Children.Add(CreateSettingsCardRow(
+                "原生 Vision 多模态图像识别",
+                "直接上传高保真截图供视觉模型解析（推荐）。关闭后走 Windows 本地 OCR 离线提取文字",
+                setVisionToggle));
+            sp.Children.Add(WrapCard(cardVision));
+
+            // Card 2: 接口设置
+            StackPanel cardApi = new StackPanel();
+            setApiBaseBox = CreateModernInput(apiBase, 260);
+            cardApi.Children.Add(CreateSettingsCardRow("API 接口地址", "OpenAI 兼容的端点 (例如 /v1/chat/completions)", setApiBaseBox));
+            cardApi.Children.Add(CreateDivider());
+
+            setApiKeyBox = CreateModernInput(apiKey, 260);
+            cardApi.Children.Add(CreateSettingsCardRow("API 密钥 (Bearer Token)", "用于请求鉴权的 API Key", setApiKeyBox));
+            cardApi.Children.Add(CreateDivider());
+
+            // Model Row with Pop-out Dropdown
+            DockPanel modelRow = new DockPanel{LastChildFill=true};
+            Button fetchBtn = new Button{Content="获取列表", Width=72, Height=32, Cursor=Cursors.Hand, Margin=new Thickness(8,0,0,0)};
+            fetchBtn.Style = Win11Theme.CreateButtonStyle(false);
+            DockPanel.SetDock(fetchBtn, Dock.Right); modelRow.Children.Add(fetchBtn);
+
+            Grid cmbGrid = new Grid{Height=32, Width=180};
+            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1, GridUnitType.Star)});
+            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+
+            setModelBox = CreateModernInput(currentModel, 0);
+            setModelBox.BorderThickness = new Thickness(1,1,0,1);
+            setModelBox.Height = 32;
+            Grid.SetColumn(setModelBox, 0); cmbGrid.Children.Add(setModelBox);
+
+            Button arrowBtn = new Button{
+                Content="▾", Width=26, Height=32,
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(0,1,1,1), Cursor=Cursors.Hand};
+            Grid.SetColumn(arrowBtn, 1); cmbGrid.Children.Add(arrowBtn);
+            modelRow.Children.Add(cmbGrid);
+
+            cardApi.Children.Add(CreateSettingsCardRow("当前推理模型", "可直接输入名称或从接口列表拉取选择", modelRow));
+            sp.Children.Add(WrapCard(cardApi));
+
+            // Setup Model Popup
+            setModelListBox = new ListBox{
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
+                BorderThickness=new Thickness(1), MaxHeight=200};
+            var lbItemStyle = new Style(typeof(ListBoxItem));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgSurface)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty, new SolidColorBrush(Win11Theme.FgPrimary)));
+            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty, new Thickness(10, 6, 10, 6)));
+            var lbHover = new Trigger { Property = ListBoxItem.IsMouseOverProperty, Value = true };
+            lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgHover)));
+            lbItemStyle.Triggers.Add(lbHover);
+            var lbSel = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
+            lbSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromArgb(50, 0, 103, 192))));
+            lbItemStyle.Triggers.Add(lbSel);
+            setModelListBox.ItemContainerStyle = lbItemStyle;
+
+            setModelPopup = new System.Windows.Controls.Primitives.Popup{
+                PlacementTarget=cmbGrid, Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                StaysOpen=false, Child=setModelListBox};
+
+            arrowBtn.Click += (s, e) => {
+                if (setModelListBox.Items.Count > 0) {
+                    setModelPopup.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
+                    setModelPopup.IsOpen = !setModelPopup.IsOpen;
+                } else {
+                    fetchBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+            };
+            setModelListBox.SelectionChanged += (s, e) => {
+                if (setModelListBox.SelectedItem != null) {
+                    setModelBox.Text = setModelListBox.SelectedItem.ToString();
+                    setModelPopup.IsOpen = false;
+                }
+            };
+
+            fetchBtn.Click += (s, e) => {
+                fetchBtn.IsEnabled = false; fetchBtn.Content = "...";
+                string ep = setApiBaseBox.Text.Trim(); string key = setApiKeyBox.Text.Trim();
+                if (ep.EndsWith("/chat/completions")) ep = ep.Substring(0, ep.Length - "/chat/completions".Length);
+                if (!ep.EndsWith("/models")) ep = ep.TrimEnd('/') + "/models";
+                Task.Run(() => {
+                    var ids = new List<string>();
+                    try {
+                        var req = (HttpWebRequest)WebRequest.Create(ep);
+                        req.Method = "GET"; req.Headers["Authorization"] = "Bearer " + key;
+                        req.UserAgent = "Codex/1.0"; req.Timeout = 10000;
+                        using (var resp = (HttpWebResponse)req.GetResponse())
+                        using (var sr2 = new System.IO.StreamReader(resp.GetResponseStream())) {
+                            string json = sr2.ReadToEnd();
+                            int pos = 0;
+                            while (true) {
+                                int idx2 = json.IndexOf("\"id\"", pos);
+                                if (idx2 < 0) break;
+                                int q1 = json.IndexOf('"', idx2 + 4);
+                                if (q1 < 0) break;
+                                int q2 = json.IndexOf('"', q1 + 1);
+                                if (q2 < 0) break;
+                                string id = json.Substring(q1 + 1, q2 - q1 - 1);
+                                if (id.Length > 0 && !id.Contains("/") && id.IndexOf("codex", StringComparison.OrdinalIgnoreCase) < 0) ids.Add(id);
+                                pos = q2 + 1;
+                            }
+                            ids.Sort();
+                        }
+                    } catch (Exception ex) { Logger.Error("FetchModels", ex); }
+                    this.Dispatcher.Invoke(() => {
+                        fetchBtn.Content = "获取列表"; fetchBtn.IsEnabled = true;
+                        if (ids.Count > 0) {
+                            string cur = setModelBox.Text;
+                            setModelListBox.Items.Clear();
+                            foreach (var id in ids) setModelListBox.Items.Add(id);
+                            setModelBox.Text = cur;
+                            setModelPopup.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
+                            setModelPopup.IsOpen = true;
+                        }
+                    });
+                });
+            };
+
+            sv.Content = sp;
+            Grid.SetRow(sv, 0); g.Children.Add(sv);
+
+            // Bottom Save bar
+            DockPanel foot = new DockPanel{LastChildFill=false, Margin=new Thickness(0,10,0,0)};
+            Button saveBtn = new Button{Content="保存设置", Width=96, Height=34};
+            saveBtn.Style = Win11Theme.CreateButtonStyle(true);
+            saveBtn.Click += (s, e) => SaveAllSettings();
+            DockPanel.SetDock(saveBtn, Dock.Right); foot.Children.Add(saveBtn);
+            Grid.SetRow(foot, 1); g.Children.Add(foot);
+
+            return g;
+        }
+
+        private Grid BuildPromptPresetsPanel() {
+            Grid g = new Grid();
+            g.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1, GridUnitType.Star)});
+            g.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+
+            ScrollViewer sv = new ScrollViewer{
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+
+            StackPanel sp = new StackPanel();
+            StackPanel card = new StackPanel();
+
+            // Preset Selection Row
+            DockPanel topRow = new DockPanel{LastChildFill=true, Margin=new Thickness(0,0,0,12)};
+            StackPanel btnBar = new StackPanel{Orientation=Orientation.Horizontal};
+
+            Button addBtn = new Button{Content="新建", Height=30, Padding=new Thickness(10,0,10,0), Margin=new Thickness(6,0,0,0)};
+            addBtn.Style = Win11Theme.CreateButtonStyle(false);
+            addBtn.Click += (s, e) => {
+                string baseName = "自定义预设"; int c = 1; string n = baseName;
+                while (promptPresets.Exists(x => x.Name == n)) { c++; n = baseName + c; }
+                promptPresets.Add(new PromptPreset(n, "请精准拆解并翻译截图内容。"));
+                currentPresetName = n;
+                SyncPresetUi();
+            };
+            btnBar.Children.Add(addBtn);
+
+            Button renameBtn = new Button{Content="重命名", Height=30, Padding=new Thickness(10,0,10,0), Margin=new Thickness(6,0,0,0)};
+            renameBtn.Style = Win11Theme.CreateButtonStyle(false);
+            renameBtn.Click += (s, e) => {
+                var cur = promptPresets.Find(x => x.Name == currentPresetName);
+                if (cur == null) return;
+                var win = new Window{
+                    Title="重命名预设", Width=360, Height=160,
+                    WindowStartupLocation=WindowStartupLocation.CenterOwner, Owner=this,
+                    Background=new SolidColorBrush(Win11Theme.BgWindow), ResizeMode=ResizeMode.NoResize};
+                Win11Theme.ApplyToWindow(win);
+
+                var wg = new Grid{Margin=new Thickness(16)};
+                wg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+                wg.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+                var inBox = CreateModernInput(cur.Name, 0); inBox.Height=30; inBox.SelectAll();
+                Grid.SetRow(inBox, 0); wg.Children.Add(inBox);
+
+                var wbtns = new StackPanel{Orientation=Orientation.Horizontal, HorizontalAlignment=HorizontalAlignment.Right, Margin=new Thickness(0,14,0,0)};
+                var okBtn = new Button{Content="确定", Width=64, Height=28, Margin=new Thickness(0,0,8,0)};
+                okBtn.Style = Win11Theme.CreateButtonStyle(true);
+                okBtn.Click += (s2, e2) => {
+                    string val = inBox.Text.Trim();
+                    if (!string.IsNullOrEmpty(val)) { cur.Name = val; currentPresetName = val; SyncPresetUi(); }
+                    win.Close();
+                };
+                wbtns.Children.Add(okBtn);
+                var cBtn = new Button{Content="取消", Width=64, Height=28};
+                cBtn.Style = Win11Theme.CreateButtonStyle(false);
+                cBtn.Click += (s2, e2) => win.Close();
+                wbtns.Children.Add(cBtn);
+
+                Grid.SetRow(wbtns, 1); wg.Children.Add(wbtns);
+                win.Content = wg; win.ShowDialog();
+            };
+            btnBar.Children.Add(renameBtn);
+
+            Button delBtn = new Button{Content="删除", Height=30, Padding=new Thickness(10,0,10,0), Margin=new Thickness(6,0,0,0)};
+            delBtn.Style = Win11Theme.CreateButtonStyle(false);
+            delBtn.Click += (s, e) => {
+                if (promptPresets.Count <= 1) { MessageBox.Show("至少保留一个预设！", "提示"); return; }
+                promptPresets.RemoveAll(x => x.Name == currentPresetName);
+                currentPresetName = promptPresets[0].Name;
+                SyncPresetUi();
+            };
+            btnBar.Children.Add(delBtn);
+
+            Button defBtn = new Button{Content="恢复默认", Height=30, Padding=new Thickness(10,0,10,0), Margin=new Thickness(6,0,0,0)};
+            defBtn.Style = Win11Theme.CreateButtonStyle(false);
+            defBtn.Click += (s, e) => {
+                if (MessageBox.Show("确认恢复所有内置默认预设？", "提示", MessageBoxButton.YesNo) == MessageBoxResult.Yes) {
+                    promptPresets = OmniDictConfig.GetDefaultPresets();
+                    currentPresetName = promptPresets[0].Name;
+                    SyncPresetUi();
+                }
+            };
+            btnBar.Children.Add(defBtn);
+            DockPanel.SetDock(btnBar, Dock.Right); topRow.Children.Add(btnBar);
+
+            // Left Preset Dropdown Pill
+            Grid pCmbGrid = new Grid{Height=32};
+            pCmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1, GridUnitType.Star)});
+            pCmbGrid.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+
+            setPresetNameText = CreateModernInput(currentPresetName, 0);
+            setPresetNameText.IsReadOnly = true; setPresetNameText.Cursor = Cursors.Hand;
+            setPresetNameText.BorderThickness = new Thickness(1,1,0,1); setPresetNameText.Height = 32;
+            Grid.SetColumn(setPresetNameText, 0); pCmbGrid.Children.Add(setPresetNameText);
+
+            Button pArrowBtn = new Button{
+                Content="▾", Width=26, Height=32,
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(0,1,1,1), Cursor=Cursors.Hand};
+            Grid.SetColumn(pArrowBtn, 1); pCmbGrid.Children.Add(pArrowBtn);
+            topRow.Children.Add(pCmbGrid);
+            card.Children.Add(topRow);
+
+            setPresetListBox = new ListBox{
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
+                BorderThickness=new Thickness(1), MaxHeight=200};
+            var pItemStyle = new Style(typeof(ListBoxItem));
+            pItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgSurface)));
+            pItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty, new SolidColorBrush(Win11Theme.FgPrimary)));
+            pItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty, new Thickness(10, 6, 10, 6)));
+            var pHover = new Trigger { Property = ListBoxItem.IsMouseOverProperty, Value = true };
+            pHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgHover)));
+            pItemStyle.Triggers.Add(pHover);
+            var pSel = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
+            pSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromArgb(50, 0, 103, 192))));
+            pItemStyle.Triggers.Add(pSel);
+            setPresetListBox.ItemContainerStyle = pItemStyle;
+
+            setPresetPopup = new System.Windows.Controls.Primitives.Popup{
+                PlacementTarget=pCmbGrid, Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                StaysOpen=false, Child=setPresetListBox};
+
+            Action togglePP = () => {
+                if (setPresetListBox.Items.Count > 0) {
+                    setPresetPopup.Width = pCmbGrid.ActualWidth + pArrowBtn.ActualWidth;
+                    setPresetPopup.IsOpen = !setPresetPopup.IsOpen;
+                }
+            };
+            pArrowBtn.Click += (s, e) => togglePP();
+            setPresetNameText.PreviewMouseLeftButtonDown += (s, e) => { togglePP(); e.Handled = true; };
+
+            setPresetListBox.SelectionChanged += (s, e) => {
+                if (setPresetListBox.SelectedItem != null) {
+                    currentPresetName = setPresetListBox.SelectedItem.ToString();
+                    setPresetNameText.Text = currentPresetName;
+                    setPresetPopup.IsOpen = false;
+                    var p = promptPresets.Find(x => x.Name == currentPresetName);
+                    if (p != null) setPromptBox.Text = p.Content;
+                }
+            };
+
+            TextBlock editHint = new TextBlock{
+                Text="系统提示词设定 (System Prompt 模板)：",
+                FontSize=12, Foreground=new SolidColorBrush(Win11Theme.FgSecondary),
+                Margin=new Thickness(0,6,0,6)};
+            card.Children.Add(editHint);
+
+            setPromptBox = new TextBox{
+                Height=210, AcceptsReturn=true, TextWrapping=TextWrapping.Wrap,
+                VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+                Padding=new Thickness(10), FontSize=12.5,
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            setPromptBox.TextChanged += (s, e) => {
+                var cur = promptPresets.Find(x => x.Name == currentPresetName);
+                if (cur != null) cur.Content = setPromptBox.Text;
+            };
+            card.Children.Add(setPromptBox);
+
+            sp.Children.Add(WrapCard(card));
+            sv.Content = sp;
+            Grid.SetRow(sv, 0); g.Children.Add(sv);
+
+            DockPanel foot = new DockPanel{LastChildFill=false, Margin=new Thickness(0,10,0,0)};
+            Button saveBtn = new Button{Content="保存更改", Width=96, Height=34};
+            saveBtn.Style = Win11Theme.CreateButtonStyle(true);
+            saveBtn.Click += (s, e) => SaveAllSettings();
+            DockPanel.SetDock(saveBtn, Dock.Right); foot.Children.Add(saveBtn);
+            Grid.SetRow(foot, 1); g.Children.Add(foot);
+
+            SyncPresetUi();
+            return g;
+        }
+
+        private Grid BuildHotkeysPanel() {
+            Grid g = new Grid();
+            ScrollViewer sv = new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+            StackPanel sp = new StackPanel();
+
+            StackPanel card = new StackPanel();
+            TextBlock hk1 = new TextBlock{
+                Text="Alt + Q", FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Color.FromRgb(227,85,54)), VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Consolas, Segoe UI")};
+            card.Children.Add(CreateSettingsCardRow("触发截图与解析", "在游戏、全屏软件、浏览器或桌面任意区域唤醒截屏并分析", hk1));
+            card.Children.Add(CreateDivider());
+
+            TextBlock hk2 = new TextBlock{
+                Text="Alt + W", FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Color.FromRgb(227,85,54)), VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Consolas, Segoe UI")};
+            card.Children.Add(CreateSettingsCardRow("关闭悬浮结果窗", "不抢占游戏控制焦点，随时一键静默隐藏释义浮窗", hk2));
+            card.Children.Add(CreateDivider());
+
+            TextBlock hk3 = new TextBlock{
+                Text="Esc", FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Win11Theme.FgSecondary), VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Consolas, Segoe UI")};
+            card.Children.Add(CreateSettingsCardRow("窗口置顶时关闭", "在 OmniDict 窗口或浮窗处于前台时，按 Esc 即可隐藏", hk3));
+            sp.Children.Add(WrapCard(card));
+
+            sv.Content = sp;
+            g.Children.Add(sv);
+            return g;
+        }
+
+        private void SyncPresetUi() {
+            if (setPresetListBox == null || setPresetNameText == null || setPromptBox == null) return;
+            setPresetListBox.Items.Clear();
+            foreach (var p in promptPresets) setPresetListBox.Items.Add(p.Name);
+            if (!promptPresets.Exists(x => x.Name == currentPresetName) && promptPresets.Count > 0) {
+                currentPresetName = promptPresets[0].Name;
+            }
+            setPresetNameText.Text = currentPresetName;
+            var cur = promptPresets.Find(x => x.Name == currentPresetName);
+            if (cur != null) setPromptBox.Text = cur.Content;
+        }
+
+        private void SaveAllSettings() {
+            if (setApiBaseBox != null) apiBase = setApiBaseBox.Text.Trim();
+            if (setApiKeyBox != null) apiKey = setApiKeyBox.Text.Trim();
+            if (setModelBox != null) currentModel = setModelBox.Text.Trim();
+            if (setVisionToggle != null) useVision = setVisionToggle.IsChecked;
+
+            double sx = floatingWin != null && floatingWin.HasCustomPosition ? floatingWin.LastX : -1;
+            double sy = floatingWin != null && floatingWin.HasCustomPosition ? floatingWin.LastY : -1;
+            OmniDictConfig.Save(apiBase, apiKey, currentModel, useVision, sx, sy, currentPresetName, promptPresets);
+            ApplyTheme();
+            MessageBox.Show("设置已保存！", "OmniDict", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private Border WrapCard(UIElement content) {
+            return new Border{
+                CornerRadius=new CornerRadius(8),
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1),
+                Padding=new Thickness(16,14,16,14),
+                Margin=new Thickness(0,0,0,10),
+                Child=content};
+        }
+
+        private Grid CreateSettingsCardRow(string title, string desc, UIElement widget) {
+            Grid row = new Grid{Margin=new Thickness(0,4,0,4)};
+            row.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1, GridUnitType.Star)});
+            row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
+
+            StackPanel textSp = new StackPanel{VerticalAlignment=VerticalAlignment.Center, Margin=new Thickness(0,0,12,0)};
+            TextBlock t = new TextBlock{
+                Text=title, FontSize=13.5, FontWeight=FontWeights.Normal,
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            textSp.Children.Add(t);
+
+            if (!string.IsNullOrEmpty(desc)) {
+                TextBlock d = new TextBlock{
+                    Text=desc, FontSize=11.5,
+                    Foreground=new SolidColorBrush(Win11Theme.FgTertiary),
+                    Margin=new Thickness(0,2,0,0), TextWrapping=TextWrapping.Wrap,
+                    FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+                textSp.Children.Add(d);
+            }
+
+            Grid.SetColumn(textSp, 0); row.Children.Add(textSp);
+            if (widget != null) {
+                Grid.SetColumn(widget, 1); row.Children.Add(widget);
+            }
+            return row;
+        }
+
+        private Border CreateDivider() {
+            return new Border{Height=1, Background=new SolidColorBrush(Win11Theme.BorderSubtle), Margin=new Thickness(0,8,0,8)};
+        }
+
+        private TextBox CreateModernInput(string text, double width) {
+            var tb = new TextBox{
+                Text=text, Height=32, VerticalContentAlignment=VerticalAlignment.Center,
+                Padding=new Thickness(10,0,10,0), FontSize=12,
+                Background=new SolidColorBrush(Win11Theme.BgSurface),
+                Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
+                CaretBrush=new SolidColorBrush(Win11Theme.FgPrimary),
+                BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
+                BorderThickness=new Thickness(1),
+                FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
+            if (width > 0) tb.Width = width;
+            return tb;
+        }
+
         public void ApplyTheme() {
+            bool isDark = Win11Theme.IsDarkTheme;
             rootBorder.Background = new SolidColorBrush(Win11Theme.BgWindow);
             rootBorder.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
-            titleText.Foreground = new SolidColorBrush(Win11Theme.FgPrimary);
+            if (sidebarBorder != null) {
+                sidebarBorder.Background = new SolidColorBrush(isDark ? Color.FromRgb(26,26,26) : Color.FromRgb(238,238,238));
+                sidebarBorder.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
+            }
+            viewHeaderTitle.Foreground = new SolidColorBrush(Win11Theme.FgPrimary);
             
-            mainSetBtn.Style = Win11Theme.CreateButtonStyle(false);
-            mainClearBtn.Style = Win11Theme.CreateButtonStyle(false);
-            
-            mainCloseBtn.Foreground = new SolidColorBrush(Win11Theme.FgSecondary);
-            listContainer.Background = new SolidColorBrush(Win11Theme.BgSurface);
-            listContainer.BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle);
-            
-            statusText.Foreground = new SolidColorBrush(Win11Theme.FgTertiary);
-
+            if (setVisionToggle != null) setVisionToggle.UpdateVisual();
+            SwitchNav(panel1.Visibility == Visibility.Visible ? 1 : (panel2.Visibility == Visibility.Visible ? 2 : (panel3.Visibility == Visibility.Visible ? 3 : 4)));
             RefreshAllCards();
         }
 
@@ -507,14 +1221,14 @@ namespace OmniDictApp {
             try{byte[] _tb=Convert.FromBase64String(EmbeddedIcon.IcoB64);using(var _tms=new System.IO.MemoryStream(_tb)){trayIcon.Icon=new System.Drawing.Icon(_tms);}}
             catch{trayIcon.Icon=System.Drawing.SystemIcons.Application;}
             trayIcon.Text="OmniDict AI"; trayIcon.Visible=true;
-            trayIcon.DoubleClick+=(s,e)=>{this.Show();this.Activate();};
+            trayIcon.DoubleClick+=(s,e)=>{this.Show();this.Activate();SwitchNav(1);};
             var menu=new System.Windows.Forms.ContextMenuStrip();
             var m1=new System.Windows.Forms.ToolStripMenuItem("历史记录");
-            m1.Click+=(s,e)=>{this.Show();this.Activate();};
+            m1.Click+=(s,e)=>{this.Show();this.Activate();SwitchNav(1);};
             var m2=new System.Windows.Forms.ToolStripMenuItem("截图解析 (Alt+Q)");
             m2.Click+=(s,e)=>TriggerSnipAndAnalyze();
             var m3=new System.Windows.Forms.ToolStripMenuItem("设置");
-            m3.Click+=(s,e)=>{this.Show();this.Activate();new SettingsDialog(this){Owner=this}.ShowDialog();};
+            m3.Click+=(s,e)=>{this.Show();this.Activate();SwitchNav(2);};
             var m4=new System.Windows.Forms.ToolStripMenuItem("退出");
             m4.Click+=(s,e)=>{isRealExit=true;this.Close();System.Windows.Application.Current.Shutdown();};
             menu.Items.AddRange(new System.Windows.Forms.ToolStripItem[]{m1,m2,m3,new System.Windows.Forms.ToolStripSeparator(),m4});
@@ -721,7 +1435,7 @@ namespace OmniDictApp {
             foreach(var it in historyItems){if(it!=entry&&it.Date==today){needHeader=false;break;}}
             if(needHeader)historyList.Items.Insert(0,MakeDateHeader(today));
             historyList.Items.Insert(needHeader?1:0,MakeCard(entry));
-            statusText.Text="历史: "+historyItems.Count+" 条";
+            statusText.Text="历史记录: "+historyItems.Count+" 条";
         }
 
         private ListBoxItem MakeDateHeader(string date){
@@ -732,7 +1446,7 @@ namespace OmniDictApp {
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderSubtle),
                 BorderThickness=new Thickness(0,0,0,1)};
             hb.Child=new TextBlock{Text=label,FontSize=11,FontWeight=FontWeights.SemiBold,
-                Foreground=new SolidColorBrush(Win11Theme.Accent)};
+                Foreground=new SolidColorBrush(Color.FromRgb(227,85,54))};
             return new ListBoxItem{Content=hb,Background=Brushes.Transparent,
                 Padding=new Thickness(0),IsEnabled=false,
                 HorizontalContentAlignment=HorizontalAlignment.Stretch};
@@ -846,552 +1560,6 @@ namespace OmniDictApp {
             cb3.Child=sv; Grid.SetRow(cb3,g.RowDefinitions.Count-1); g.Children.Add(cb3);
             this.Content=g;
             this.KeyDown+=(s,e)=>{if(e.Key==Key.Escape)this.Close();};
-        }
-    }
-
-    public class SettingsDialog : Window {
-        private TextBox TB, TK, CMBTEXT;
-        private System.Windows.Controls.Primitives.Popup CMBPOPUP;
-        private ListBox CMBLB;
-        private TextBox PRESET_TEXT;
-        private System.Windows.Controls.Primitives.Popup PRESET_POPUP;
-        private ListBox PRESET_LB;
-        private TextBox promptBox;
-        private MainWindow M;
-        private List<PromptPreset> localPresets = new List<PromptPreset>();
-
-        public SettingsDialog(MainWindow main) {
-            M = main;
-            this.Title = "设置";
-            this.Width = 620;
-            this.Height = 600;
-            this.MinWidth = 520;
-            this.MinHeight = 500;
-            this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            this.Background = new SolidColorBrush(Win11Theme.BgWindow);
-            this.SourceInitialized += (s, e) => Win11Theme.ApplyToWindow(this);
-
-            if (M.promptPresets != null) {
-                foreach (var p in M.promptPresets) localPresets.Add(new PromptPreset(p.Name, p.Content));
-            }
-            if (localPresets.Count == 0) localPresets = OmniDictConfig.GetDefaultPresets();
-
-            Grid rootGrid = new Grid();
-            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            ScrollViewer sv = new ScrollViewer {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-
-            StackPanel sp = new StackPanel { Margin = new Thickness(24, 20, 24, 16) };
-
-            TextBlock pageTitle = new TextBlock {
-                Text = "系统设置",
-                FontSize = 20,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei"),
-                Margin = new Thickness(0, 0, 0, 4) };
-            sp.Children.Add(pageTitle);
-
-            TextBlock cfgPath = new TextBlock {
-                Text = "配置文件路径: " + OmniDictConfig.ConfigPath,
-                FontSize = 11,
-                Foreground = new SolidColorBrush(Win11Theme.FgTertiary),
-                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Margin = new Thickness(0, 0, 0, 16),
-                TextWrapping = TextWrapping.Wrap };
-            sp.Children.Add(cfgPath);
-
-            // Group 1: 模型与接口
-            sp.Children.Add(CreateSectionHeader("模型与接口"));
-
-            StackPanel card1 = new StackPanel();
-            TB = CreateWin11Input(M.apiBase, 280);
-            card1.Children.Add(CreateSettingsRow("API 端点地址", "OpenAI 兼容推理接口 (Chat Completions)", TB));
-            card1.Children.Add(CreateRowDivider());
-
-            TK = CreateWin11Input(M.apiKey, 280);
-            card1.Children.Add(CreateSettingsRow("API 密钥", "用于鉴权的 Bearer Token / API Key", TK));
-            card1.Children.Add(CreateRowDivider());
-
-            DockPanel modelRowWidget = new DockPanel { LastChildFill = true };
-            Button fetchBtn = new Button { Content = "拉取列表", Width = 72, Height = 30, Cursor = Cursors.Hand, Margin = new Thickness(6, 0, 0, 0) };
-            fetchBtn.Style = Win11Theme.CreateButtonStyle(false);
-            DockPanel.SetDock(fetchBtn, Dock.Right);
-            modelRowWidget.Children.Add(fetchBtn);
-
-            Grid cmbGrid = new Grid { Height = 30, Width = 200 };
-            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            cmbGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            CMBTEXT = CreateWin11Input(M.currentModel, 0);
-            CMBTEXT.BorderThickness = new Thickness(1, 1, 0, 1);
-            CMBTEXT.Height = 30;
-            Grid.SetColumn(CMBTEXT, 0);
-            cmbGrid.Children.Add(CMBTEXT);
-
-            Button arrowBtn = new Button {
-                Content = "▾", Width = 26, Height = 30,
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness = new Thickness(0, 1, 1, 1),
-                Cursor = Cursors.Hand };
-            Grid.SetColumn(arrowBtn, 1);
-            cmbGrid.Children.Add(arrowBtn);
-
-            modelRowWidget.Children.Add(cmbGrid);
-            card1.Children.Add(CreateSettingsRow("当前推理模型", "可直接输入名称或从接口列表拉取选择", modelRowWidget));
-            sp.Children.Add(WrapInCard(card1));
-
-            CMBLB = new ListBox {
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderStrong),
-                BorderThickness = new Thickness(1), MaxHeight = 220 };
-            ScrollViewer.SetVerticalScrollBarVisibility(CMBLB, ScrollBarVisibility.Auto);
-            var lbItemStyle = new Style(typeof(ListBoxItem));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgSurface)));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty, new SolidColorBrush(Win11Theme.FgPrimary)));
-            lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty, new Thickness(10, 6, 10, 6)));
-            var lbHover = new Trigger { Property = ListBoxItem.IsMouseOverProperty, Value = true };
-            lbHover.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgHover)));
-            lbItemStyle.Triggers.Add(lbHover);
-            var lbSel = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true };
-            lbSel.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Color.FromArgb(50, 0, 103, 192))));
-            lbItemStyle.Triggers.Add(lbSel);
-            CMBLB.ItemContainerStyle = lbItemStyle;
-            CMBLB.SelectionChanged += (s, e) => {
-                if (CMBLB.SelectedItem != null) {
-                    CMBTEXT.Text = CMBLB.SelectedItem.ToString();
-                    CMBPOPUP.IsOpen = false;
-                }
-            };
-            CMBPOPUP = new System.Windows.Controls.Primitives.Popup {
-                PlacementTarget = cmbGrid, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
-                StaysOpen = false, Child = CMBLB };
-            arrowBtn.Click += (s, e) => {
-                if (CMBLB.Items.Count > 0) {
-                    CMBPOPUP.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
-                    CMBPOPUP.IsOpen = !CMBPOPUP.IsOpen;
-                } else {
-                    fetchBtn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                }
-            };
-
-            fetchBtn.Click += (s, e) => {
-                fetchBtn.IsEnabled = false; fetchBtn.Content = "...";
-                string ep = TB.Text.Trim(); string key = TK.Text.Trim();
-                if (ep.EndsWith("/chat/completions")) ep = ep.Substring(0, ep.Length - "/chat/completions".Length);
-                if (!ep.EndsWith("/models")) ep = ep.TrimEnd('/') + "/models";
-                Task.Run(() => {
-                    var ids = new List<string>();
-                    try {
-                        var req = (HttpWebRequest)WebRequest.Create(ep);
-                        req.Method = "GET"; req.Headers["Authorization"] = "Bearer " + key;
-                        req.UserAgent = "Codex/1.0"; req.Timeout = 10000;
-                        using (var resp = (HttpWebResponse)req.GetResponse())
-                        using (var sr2 = new System.IO.StreamReader(resp.GetResponseStream())) {
-                            string json = sr2.ReadToEnd();
-                            int pos = 0;
-                            while (true) {
-                                int idx2 = json.IndexOf("\"id\"", pos);
-                                if (idx2 < 0) break;
-                                int q1 = json.IndexOf('"', idx2 + 4);
-                                if (q1 < 0) break;
-                                int q2 = json.IndexOf('"', q1 + 1);
-                                if (q2 < 0) break;
-                                string id = json.Substring(q1 + 1, q2 - q1 - 1);
-                                if (id.Length > 0 && !id.Contains("/") && id.IndexOf("codex", System.StringComparison.OrdinalIgnoreCase) < 0) ids.Add(id);
-                                pos = q2 + 1;
-                            }
-                            ids.Sort();
-                        }
-                    } catch (Exception ex) { Logger.Error("FetchModels", ex); }
-                    this.Dispatcher.Invoke(() => {
-                        fetchBtn.Content = "拉取列表"; fetchBtn.IsEnabled = true;
-                        if (ids.Count > 0) {
-                            string cur = CMBTEXT.Text;
-                            CMBLB.Items.Clear();
-                            foreach (var id in ids) CMBLB.Items.Add(id);
-                            CMBTEXT.Text = cur;
-                            CMBPOPUP.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
-                            CMBPOPUP.IsOpen = true;
-                        }
-                    });
-                });
-            };
-
-            // Group 2: 解析预设与 System Prompt 自定义
-            sp.Children.Add(CreateSectionHeader("AI 提示词与场景预设 (Prompt Presets)"));
-
-            StackPanel cardPreset = new StackPanel();
-
-            // Row 1: Preset selector and management buttons
-            DockPanel presetBar = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 4, 0, 8) };
-
-            Grid presetGrid = new Grid { Height = 30, Width = 210 };
-            presetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            presetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            PRESET_TEXT = CreateWin11Input("", 0);
-            PRESET_TEXT.IsReadOnly = true;
-            PRESET_TEXT.Cursor = Cursors.Hand;
-            PRESET_TEXT.BorderThickness = new Thickness(1, 1, 0, 1);
-            PRESET_TEXT.Height = 30;
-            Grid.SetColumn(PRESET_TEXT, 0);
-            presetGrid.Children.Add(PRESET_TEXT);
-
-            Button presetArrowBtn = new Button {
-                Content = "▾", Width = 26, Height = 30,
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness = new Thickness(0, 1, 1, 1),
-                Cursor = Cursors.Hand };
-            Grid.SetColumn(presetArrowBtn, 1);
-            presetGrid.Children.Add(presetArrowBtn);
-
-            PRESET_LB = new ListBox {
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderStrong),
-                BorderThickness = new Thickness(1), MaxHeight = 220 };
-            ScrollViewer.SetVerticalScrollBarVisibility(PRESET_LB, ScrollBarVisibility.Auto);
-            PRESET_LB.ItemContainerStyle = lbItemStyle;
-
-            PRESET_POPUP = new System.Windows.Controls.Primitives.Popup {
-                PlacementTarget = presetGrid, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
-                StaysOpen = false, Child = PRESET_LB };
-
-            Action togglePresetPopup = () => {
-                if (PRESET_LB.Items.Count > 0) {
-                    PRESET_POPUP.Width = presetGrid.ActualWidth + presetArrowBtn.ActualWidth;
-                    PRESET_POPUP.IsOpen = !PRESET_POPUP.IsOpen;
-                }
-            };
-            presetArrowBtn.Click += (s, e) => togglePresetPopup();
-            PRESET_TEXT.PreviewMouseLeftButtonDown += (s, e) => { togglePresetPopup(); e.Handled = true; };
-
-            Action<string> SyncComboItems = null;
-            SyncComboItems = (selectName) => {
-                PRESET_LB.Items.Clear();
-                foreach (var p in localPresets) PRESET_LB.Items.Add(p.Name);
-                if (selectName != null && PRESET_LB.Items.Contains(selectName)) {
-                    PRESET_LB.SelectedItem = selectName;
-                    PRESET_TEXT.Text = selectName;
-                } else if (PRESET_LB.Items.Count > 0) {
-                    PRESET_LB.SelectedIndex = 0;
-                    PRESET_TEXT.Text = PRESET_LB.Items[0].ToString();
-                } else {
-                    PRESET_TEXT.Text = "";
-                }
-            };
-
-            PRESET_LB.SelectionChanged += (s, e) => {
-                if (PRESET_LB.SelectedItem != null) {
-                    string selName = PRESET_LB.SelectedItem.ToString();
-                    PRESET_TEXT.Text = selName;
-                    PRESET_POPUP.IsOpen = false;
-                    var p = localPresets.Find(x => x.Name == selName);
-                    if (p != null) promptBox.Text = p.Content;
-                }
-            };
-
-            DockPanel.SetDock(presetGrid, Dock.Left);
-            presetBar.Children.Add(presetGrid);
-
-            StackPanel presetBtnBar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
-            Button addPresetBtn = new Button { Content = "新建预设", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
-            addPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
-            addPresetBtn.Click += (s, e) => {
-                string baseName = "新预设"; int count = 1;
-                string newName = baseName;
-                while (localPresets.Exists(x => x.Name == newName)) { count++; newName = baseName + count; }
-                localPresets.Add(new PromptPreset(newName, "你是一位屏幕助手，请清晰准确解析截图中内容。"));
-                SyncComboItems(newName);
-            };
-            presetBtnBar.Children.Add(addPresetBtn);
-
-            Button renamePresetBtn = new Button { Content = "重命名", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
-            renamePresetBtn.Style = Win11Theme.CreateButtonStyle(false);
-            renamePresetBtn.Click += (s, e) => {
-                if (string.IsNullOrEmpty(PRESET_TEXT.Text)) return;
-                string curName = PRESET_TEXT.Text;
-                var p = localPresets.Find(x => x.Name == curName);
-                if (p == null) return;
-
-                var promptWin = new Window {
-                    Title = "重命名预设", Width = 360, Height = 170,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    Owner = this, Background = new SolidColorBrush(Win11Theme.BgWindow),
-                    ResizeMode = ResizeMode.NoResize };
-                Win11Theme.ApplyToWindow(promptWin);
-
-                var pg = new Grid { Margin = new Thickness(16) };
-                pg.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                pg.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                pg.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                var pLbl = new TextBlock { Text = "预设名称:", FontSize = 12, Foreground = new SolidColorBrush(Win11Theme.FgPrimary), Margin = new Thickness(0, 0, 0, 6) };
-                Grid.SetRow(pLbl, 0); pg.Children.Add(pLbl);
-
-                var pBox = CreateWin11Input(curName, 0);
-                pBox.SelectAll();
-                Grid.SetRow(pBox, 1); pg.Children.Add(pBox);
-
-                var pBtns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-                var pOk = new Button { Content = "确定", Width = 64, Height = 28, Margin = new Thickness(0, 0, 8, 0) };
-                pOk.Style = Win11Theme.CreateButtonStyle(true);
-                pOk.Click += (s2, e2) => {
-                    string nn = pBox.Text.Trim();
-                    if (!string.IsNullOrEmpty(nn) && nn != curName) {
-                        p.Name = nn;
-                        SyncComboItems(nn);
-                    }
-                    promptWin.Close();
-                };
-                pBtns.Children.Add(pOk);
-                var pCancel = new Button { Content = "取消", Width = 64, Height = 28 };
-                pCancel.Style = Win11Theme.CreateButtonStyle(false);
-                pCancel.Click += (s2, e2) => promptWin.Close();
-                pBtns.Children.Add(pCancel);
-
-                Grid.SetRow(pBtns, 2); pg.Children.Add(pBtns);
-                promptWin.Content = pg;
-                promptWin.ShowDialog();
-            };
-            presetBtnBar.Children.Add(renamePresetBtn);
-
-            Button delPresetBtn = new Button { Content = "删除预设", Height = 30, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0) };
-            delPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
-            delPresetBtn.Click += (s, e) => {
-                if (string.IsNullOrEmpty(PRESET_TEXT.Text)) return;
-                if (localPresets.Count <= 1) {
-                    MessageBox.Show("至少需要保留一个预设！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
-                string curName = PRESET_TEXT.Text;
-                localPresets.RemoveAll(x => x.Name == curName);
-                SyncComboItems(null);
-            };
-            presetBtnBar.Children.Add(delPresetBtn);
-
-            Button resetPresetBtn = new Button { Content = "恢复默认预设", Height = 30, Padding = new Thickness(10, 0, 10, 0) };
-            resetPresetBtn.Style = Win11Theme.CreateButtonStyle(false);
-            resetPresetBtn.Click += (s, e) => {
-                if (MessageBox.Show("确定将所有预设恢复为系统默认吗？当前修改将丢失。", "确认恢复", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) {
-                    localPresets = OmniDictConfig.GetDefaultPresets();
-                    SyncComboItems(null);
-                }
-            };
-            presetBtnBar.Children.Add(resetPresetBtn);
-
-            DockPanel.SetDock(presetBtnBar, Dock.Right);
-            presetBar.Children.Add(presetBtnBar);
-            cardPreset.Children.Add(presetBar);
-
-            // Row 2: Prompt content editor
-            TextBlock editLbl = new TextBlock {
-                Text = "提示词模板 (System Prompt，支持实时自由修改)：",
-                FontSize = 11.5,
-                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
-                Margin = new Thickness(0, 6, 0, 4) };
-            cardPreset.Children.Add(editLbl);
-
-            promptBox = new TextBox {
-                Height = 110,
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Padding = new Thickness(8),
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                CaretBrush = new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness = new Thickness(1),
-                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                FontSize = 12 };
-            cardPreset.Children.Add(promptBox);
-
-            promptBox.TextChanged += (s, e) => {
-                if (!string.IsNullOrEmpty(PRESET_TEXT.Text)) {
-                    string selName = PRESET_TEXT.Text;
-                    var p = localPresets.Find(x => x.Name == selName);
-                    if (p != null) p.Content = promptBox.Text;
-                }
-            };
-
-            SyncComboItems(M.currentPresetName);
-            sp.Children.Add(WrapInCard(cardPreset));
-
-            // Group 3: 图像识别与输入模式
-            sp.Children.Add(CreateSectionHeader("输入与识别模式"));
-
-            StackPanel card2 = new StackPanel();
-            CheckBox visionChk = new CheckBox {
-                Content = "开启原生 Vision 多模态图像输入",
-                IsChecked = M.useVision,
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                VerticalContentAlignment = VerticalAlignment.Center,
-                Cursor = Cursors.Hand };
-            card2.Children.Add(CreateSettingsRow(
-                "图像识别模式 (Multimodal Vision)",
-                "直接上传截图供多模态模型端到端识别。取消勾选则优先调用 Windows 本地 OCR 引擎离线提取文本后再传入（适合纯文本模型）",
-                visionChk));
-            sp.Children.Add(WrapInCard(card2));
-
-            // Group 4: 全局快捷键指南
-            sp.Children.Add(CreateSectionHeader("全局快捷键操作指南"));
-
-            StackPanel card3 = new StackPanel();
-            TextBlock hk1 = new TextBlock {
-                Text = "Alt + Q",
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Win11Theme.Accent),
-                VerticalAlignment = VerticalAlignment.Center,
-                FontFamily = new FontFamily("Consolas, Segoe UI") };
-            card3.Children.Add(CreateSettingsRow("截图查词 / 全场景屏幕解析", "在任意全屏游戏、专业软件或网页中呼出区域框选", hk1));
-            card3.Children.Add(CreateRowDivider());
-
-            TextBlock hk2 = new TextBlock {
-                Text = "Alt + W",
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Win11Theme.Accent),
-                VerticalAlignment = VerticalAlignment.Center,
-                FontFamily = new FontFamily("Consolas, Segoe UI") };
-            card3.Children.Add(CreateSettingsRow("静默关闭悬浮窗", "完全不抢占游戏输入焦点，随时关闭释义浮窗", hk2));
-            sp.Children.Add(WrapInCard(card3));
-
-            sv.Content = sp;
-            Grid.SetRow(sv, 0);
-            rootGrid.Children.Add(sv);
-
-            // Bottom Action Bar
-            Border bottomBar = new Border {
-                Background = new SolidColorBrush(Win11Theme.IsDarkTheme ? Color.FromRgb(28, 28, 28) : Color.FromRgb(240, 240, 240)),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness = new Thickness(0, 1, 0, 0),
-                Padding = new Thickness(24, 12, 24, 12) };
-
-            StackPanel btns = new StackPanel {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right };
-
-            Button save = new Button { Content = "保存设置", Width = 88, Height = 32, Cursor = Cursors.Hand, Margin = new Thickness(0, 0, 8, 0) };
-            save.Style = Win11Theme.CreateButtonStyle(true);
-            save.Click += (s, e) => {
-                M.apiBase = TB.Text.Trim();
-                M.apiKey = TK.Text.Trim();
-                M.currentModel = CMBTEXT.Text.Trim();
-                M.useVision = visionChk.IsChecked == true;
-                if (!string.IsNullOrEmpty(PRESET_TEXT.Text)) {
-                    M.currentPresetName = PRESET_TEXT.Text;
-                }
-                M.promptPresets = localPresets;
-
-                double sx = M.floatingWin != null && M.floatingWin.HasCustomPosition ? M.floatingWin.LastX : -1;
-                double sy = M.floatingWin != null && M.floatingWin.HasCustomPosition ? M.floatingWin.LastY : -1;
-                OmniDictConfig.Save(M.apiBase, M.apiKey, M.currentModel, M.useVision, sx, sy, M.currentPresetName, M.promptPresets);
-                M.ApplyTheme();
-                this.Close();
-            };
-
-            Button cancel = new Button { Content = "取消", Width = 72, Height = 32, Cursor = Cursors.Hand };
-            cancel.Style = Win11Theme.CreateButtonStyle(false);
-            cancel.Click += (s, e) => this.Close();
-
-            btns.Children.Add(save);
-            btns.Children.Add(cancel);
-            bottomBar.Child = btns;
-
-            Grid.SetRow(bottomBar, 1);
-            rootGrid.Children.Add(bottomBar);
-
-            this.Content = rootGrid;
-        }
-
-        private TextBlock CreateSectionHeader(string text) {
-            return new TextBlock {
-                Text = text,
-                FontSize = 13,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Win11Theme.FgSecondary),
-                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Margin = new Thickness(2, 12, 0, 6) };
-        }
-
-        private Border WrapInCard(UIElement content) {
-            return new Border {
-                CornerRadius = new CornerRadius(8),
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(16, 12, 16, 12),
-                Margin = new Thickness(0, 0, 0, 6),
-                Child = content };
-        }
-
-        private Grid CreateSettingsRow(string header, string description, UIElement actionWidget) {
-            Grid row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            StackPanel textPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-            TextBlock h = new TextBlock {
-                Text = header,
-                FontSize = 13,
-                FontWeight = FontWeights.Normal,
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei") };
-            textPanel.Children.Add(h);
-
-            if (!string.IsNullOrEmpty(description)) {
-                TextBlock desc = new TextBlock {
-                    Text = description,
-                    FontSize = 11.5,
-                    Foreground = new SolidColorBrush(Win11Theme.FgTertiary),
-                    FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                    Margin = new Thickness(0, 2, 0, 0),
-                    TextWrapping = TextWrapping.Wrap };
-                textPanel.Children.Add(desc);
-            }
-
-            Grid.SetColumn(textPanel, 0);
-            row.Children.Add(textPanel);
-
-            if (actionWidget != null) {
-                Grid.SetColumn(actionWidget, 1);
-                row.Children.Add(actionWidget);
-            }
-
-            return row;
-        }
-
-        private Border CreateRowDivider() {
-            return new Border {
-                Height = 1,
-                Background = new SolidColorBrush(Win11Theme.BorderSubtle),
-                Margin = new Thickness(0, 4, 0, 4) };
-        }
-
-        private TextBox CreateWin11Input(string text, double width = 0) {
-            var tb = new TextBox {
-                Text = text,
-                Height = 30,
-                VerticalContentAlignment = VerticalAlignment.Center,
-                Padding = new Thickness(10, 0, 10, 0),
-                Background = new SolidColorBrush(Win11Theme.BgSurface),
-                Foreground = new SolidColorBrush(Win11Theme.FgPrimary),
-                CaretBrush = new SolidColorBrush(Win11Theme.FgPrimary),
-                BorderBrush = new SolidColorBrush(Win11Theme.BorderSubtle),
-                BorderThickness = new Thickness(1),
-                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                FontSize = 12 };
-            if (width > 0) tb.Width = width;
-            return tb;
         }
     }
 
