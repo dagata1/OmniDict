@@ -1432,14 +1432,31 @@ namespace OmniDictApp {
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
             // Header
-            DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 0, 0, 4) };
+            DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(2, 2, 2, 8) };
             Border bg = new Border {
-                Width = 18, Height = 18, CornerRadius = new CornerRadius(4),
-                Background = new SolidColorBrush(Color.FromRgb(0, 103, 192)), VerticalAlignment = VerticalAlignment.Center };
+                Width = 20, Height = 20, CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(Color.FromRgb(0, 103, 192)), VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0) };
             bg.Child = new TextBlock {
-                Text = "O", Foreground = Brushes.White, FontSize = 10, FontWeight = FontWeights.Bold,
+                Text = "O", Foreground = Brushes.White, FontSize = 11, FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            DockPanel.SetDock(bg, Dock.Left); h.Children.Add(bg);
+
+            StackPanel leftControls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            leftControls.Children.Add(bg);
+
+            // Header compact thumbnail pill (hover to view full image in tooltip)
+            previewImg = new System.Windows.Controls.Image {
+                Height = 20, MaxWidth = 72, Stretch = System.Windows.Media.Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center };
+            previewBorder = new Border {
+                CornerRadius = new CornerRadius(4),
+                BorderThickness = new Thickness(1), Padding = new Thickness(1),
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand, Visibility = Visibility.Collapsed };
+            previewBorder.Child = previewImg;
+            leftControls.Children.Add(previewBorder);
+
+            DockPanel.SetDock(leftControls, Dock.Left); h.Children.Add(leftControls);
 
             StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
 
@@ -1463,26 +1480,16 @@ namespace OmniDictApp {
             DockPanel.SetDock(rightControls, Dock.Right); h.Children.Add(rightControls);
             Grid.SetRow(h, 0); g.Children.Add(h);
 
-            // Preview thumbnail
-            previewImg = new System.Windows.Controls.Image {
-                MaxHeight = 52, MaxWidth = 140, Stretch = System.Windows.Media.Stretch.Uniform,
-                HorizontalAlignment = HorizontalAlignment.Left };
-            previewBorder = new Border {
-                CornerRadius = new CornerRadius(6),
-                BorderThickness = new Thickness(1), Padding = new Thickness(1),
-                Height = 54, VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed };
-            previewBorder.Child = previewImg;
 
             // Content
             contentBox = new RichTextBox {
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0), IsReadOnly = true,
-                FontSize = 13, FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
-                Padding = new Thickness(2) };
+                FontSize = 13.5, FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei"),
+                Padding = new Thickness(4, 2, 4, 4) };
             ScrollViewer.SetVerticalScrollBarVisibility(contentBox, ScrollBarVisibility.Auto);
             ScrollViewer.SetHorizontalScrollBarVisibility(contentBox, ScrollBarVisibility.Disabled);
-            cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(6, 4, 6, 4) };
+            cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6, 8, 6) };
             cc.Child = contentBox; Grid.SetRow(cc, 1); g.Children.Add(cc);
 
             root.Child = g; this.Content = root;
@@ -1535,6 +1542,14 @@ namespace OmniDictApp {
                     bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
                     bmp.EndInit(); bmp.Freeze();
                     previewImg.Source = bmp;
+                    // Hover tooltip to preview larger image
+                    var tipImg = new System.Windows.Controls.Image { Source = bmp, MaxWidth = 320, MaxHeight = 220, Stretch = System.Windows.Media.Stretch.Uniform };
+                    var tipBorder = new Border {
+                        Background = new SolidColorBrush(Color.FromArgb(230, 16, 16, 20)),
+                        BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
+                        BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(4), Child = tipImg };
+                    previewBorder.ToolTip = tipBorder;
                     previewBorder.Visibility = Visibility.Visible;
                 } catch { previewBorder.Visibility = Visibility.Collapsed; }
             } else { previewBorder.Visibility = Visibility.Collapsed; }
@@ -1553,25 +1568,22 @@ namespace OmniDictApp {
             var doc = new System.Windows.Documents.FlowDocument();
             doc.PagePadding = new Thickness(0);
             string[] lns = raw.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-            var curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = double.NaN };
-            if (previewImg != null && previewImg.Source != null) {
-                var inlineImage = new System.Windows.Controls.Image {
-                    Source = previewImg.Source,
-                    Height = 52,
-                    MaxWidth = 140,
-                    Stretch = System.Windows.Media.Stretch.Uniform,
-                    Margin = new Thickness(0, 0, 10, 4),
-                    VerticalAlignment = VerticalAlignment.Center };
-                curPara.Inlines.Add(new System.Windows.Documents.InlineUIContainer(inlineImage));
-            }
+            var curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 0, 0, 4), LineHeight = 22 };
             bool firstBlock = true;
             System.Action flushPara = () => {
                 if (curPara.Inlines.Count > 0) { doc.Blocks.Add(curPara); firstBlock = false; }
-                curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 3, 0, 0), LineHeight = double.NaN };
+                curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 0, 0, 4), LineHeight = 22 };
             };
             foreach (string line in lns) {
                 string t = line.TrimEnd();
                 if (t.TrimStart('-').Replace("-", "").Trim().Length == 0 && t.Length >= 2 && t.Length <= 4) { flushPara(); continue; }
+                // Section brackets like 【中文意思】, 【核心重点】, 【游戏大师】
+                if (t.StartsWith("【") && t.Contains("】")) {
+                    flushPara();
+                    Color sectionColor = isDark ? Color.FromRgb(140, 185, 255) : Color.FromRgb(0, 103, 192);
+                    AddHeading(doc, t, 14.0, sectionColor, new Thickness(0, firstBlock ? 2 : 12, 0, 4));
+                    firstBlock = false; continue;
+                }
                 if (t.StartsWith("#### ")) {
                     flushPara();
                     Color hc = isDark ? Color.FromRgb(160, 180, 240) : Color.FromRgb(0, 90, 180);
@@ -1594,13 +1606,13 @@ namespace OmniDictApp {
                 if (t.StartsWith("- ") || t.StartsWith("* ")) {
                     string content = t.Substring(2);
                     flushPara();
-                    var bp = new System.Windows.Documents.Paragraph { Margin = new Thickness(12, 1, 0, 1), LineHeight = double.NaN };
+                    var bp = new System.Windows.Documents.Paragraph { Margin = new Thickness(12, 1, 0, 2), LineHeight = 22 };
                     var bdot = new System.Windows.Documents.Run("• ");
                     bdot.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(99, 140, 255) : Color.FromRgb(0, 103, 192));
                     bp.Inlines.Add(bdot);
                     AddInlineText(bp, content, isDark);
                     doc.Blocks.Add(bp); firstBlock = false;
-                    curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 3, 0, 0), LineHeight = double.NaN };
+                    curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0, 0, 0, 4), LineHeight = 22 };
                     continue;
                 }
                 AddInlineText(curPara, t, isDark);
