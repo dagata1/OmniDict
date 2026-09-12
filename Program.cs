@@ -1402,7 +1402,7 @@ namespace OmniDictApp {
         private const int SW_SHOWNOACTIVATE = 4;
 
         public FloatingResultWindow() {
-            this.Title = "OmniDict Float"; this.Width = 420; this.Height = 520;
+            this.Title = "OmniDict Float"; this.Width = 440; this.Height = 680;
             this.WindowStyle = WindowStyle.None; this.AllowsTransparency = true;
             this.Background = Brushes.Transparent; this.Topmost = true;
             this.ShowInTaskbar = false; this.ResizeMode = ResizeMode.NoResize;
@@ -1427,14 +1427,14 @@ namespace OmniDictApp {
                     } catch {}
                 }
             };
-            Grid g = new Grid { Margin = new Thickness(12, 10, 12, 10) };
+            Grid g = new Grid { Margin = new Thickness(10, 8, 10, 8) };
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Header
-            DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 0, 0, 8) };
+            DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 0, 0, 4) };
             Border bg = new Border {
                 Width = 18, Height = 18, CornerRadius = new CornerRadius(4),
                 Background = new SolidColorBrush(Color.FromRgb(0, 103, 192)), VerticalAlignment = VerticalAlignment.Center };
@@ -1467,12 +1467,12 @@ namespace OmniDictApp {
 
             // Preview thumbnail
             previewImg = new System.Windows.Controls.Image {
-                MaxHeight = 100, Stretch = System.Windows.Media.Stretch.Uniform,
+                MaxHeight = 64, MaxWidth = 260, Stretch = System.Windows.Media.Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Left };
             previewBorder = new Border {
                 CornerRadius = new CornerRadius(6),
                 BorderThickness = new Thickness(1), Padding = new Thickness(2),
-                Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
+                Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed };
             previewBorder.Child = previewImg;
             Grid.SetRow(previewBorder, 1); g.Children.Add(previewBorder);
 
@@ -1484,7 +1484,7 @@ namespace OmniDictApp {
                 Padding = new Thickness(2) };
             ScrollViewer.SetVerticalScrollBarVisibility(contentBox, ScrollBarVisibility.Auto);
             ScrollViewer.SetHorizontalScrollBarVisibility(contentBox, ScrollBarVisibility.Disabled);
-            cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(4, 2, 4, 2) };
+            cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(6, 4, 6, 4) };
             cc.Child = contentBox; Grid.SetRow(cc, 2); g.Children.Add(cc);
 
             root.Child = g; this.Content = root;
@@ -1514,8 +1514,16 @@ namespace OmniDictApp {
             }
         }
 
+        private double GetPreferredHeight() {
+            double workHeight = SystemParameters.WorkArea.Height;
+            double preferred = workHeight * 0.78;
+            if (preferred < 560) preferred = 560;
+            if (preferred > 760) preferred = 760;
+            return preferred;
+        }
+
         public void ShowLoading(double cursorX, double cursorY, byte[] imgBytes) {
-            this.WindowState = WindowState.Normal; this.Width = 420; this.Height = 520;
+            this.WindowState = WindowState.Normal; this.Width = 440; this.Height = GetPreferredHeight();
             if (HasCustomPosition && LastX >= 0 && LastY >= 0) {
                 EnsureWithinScreen(LastX, LastY);
             } else {
