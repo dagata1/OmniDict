@@ -1429,9 +1429,7 @@ namespace OmniDictApp {
             };
             Grid g = new Grid { Margin = new Thickness(10, 8, 10, 8) };
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Header
             DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 0, 0, 4) };
@@ -1475,7 +1473,6 @@ namespace OmniDictApp {
                 Height = 54, VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed };
             previewBorder.Child = previewImg;
-            Grid.SetRow(previewBorder, 1); g.Children.Add(previewBorder);
 
             // Content
             contentBox = new RichTextBox {
@@ -1486,7 +1483,7 @@ namespace OmniDictApp {
             ScrollViewer.SetVerticalScrollBarVisibility(contentBox, ScrollBarVisibility.Auto);
             ScrollViewer.SetHorizontalScrollBarVisibility(contentBox, ScrollBarVisibility.Disabled);
             cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(6, 4, 6, 4) };
-            cc.Child = contentBox; Grid.SetRow(cc, 2); g.Children.Add(cc);
+            cc.Child = contentBox; Grid.SetRow(cc, 1); g.Children.Add(cc);
 
             root.Child = g; this.Content = root;
             this.KeyDown += (s, e) => { if (e.Key == Key.Escape) this.Hide(); };
@@ -1557,6 +1554,16 @@ namespace OmniDictApp {
             doc.PagePadding = new Thickness(0);
             string[] lns = raw.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             var curPara = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = double.NaN };
+            if (previewImg != null && previewImg.Source != null) {
+                var inlineImage = new System.Windows.Controls.Image {
+                    Source = previewImg.Source,
+                    Height = 52,
+                    MaxWidth = 140,
+                    Stretch = System.Windows.Media.Stretch.Uniform,
+                    Margin = new Thickness(0, 0, 10, 4),
+                    VerticalAlignment = VerticalAlignment.Center };
+                curPara.Inlines.Add(new System.Windows.Documents.InlineUIContainer(inlineImage));
+            }
             bool firstBlock = true;
             System.Action flushPara = () => {
                 if (curPara.Inlines.Count > 0) { doc.Blocks.Add(curPara); firstBlock = false; }
