@@ -13,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -383,6 +384,13 @@ namespace OmniDictApp {
         }
     }
 
+    public enum ToastType {
+        Success,
+        Info,
+        Warning,
+        Error
+    }
+
     public class MainWindow : Window {
         private const int  HOTKEY_ID_ALT_Q  = 9002;
         private const int  HOTKEY_ID_ALT_W  = 9003;
@@ -420,6 +428,14 @@ namespace OmniDictApp {
         private TextBlock brandTitleText;
         private Button winMinBtn;
         private Button winCloseBtn;
+
+        // Toast Notification elements
+        private Border toastBorder;
+        private TextBlock toastIcon;
+        private TextBlock toastText;
+        private DispatcherTimer toastTimer;
+        private TranslateTransform toastTranslate;
+        private ToastType currentToastType = ToastType.Success;
 
         // Settings inputs
         private TextBox setApiBaseBox, setApiKeyBox, setModelBox;
@@ -620,6 +636,11 @@ namespace OmniDictApp {
             panel4 = BuildHotkeysPanel();
             Grid.SetRow(panel4, 1); rightPanel.Children.Add(panel4);
 
+            InitToast();
+            Grid.SetRow(toastBorder, 0);
+            Grid.SetRowSpan(toastBorder, 2);
+            rightPanel.Children.Add(toastBorder);
+
             Grid.SetColumn(rightPanel, 1); mainLayout.Children.Add(rightPanel);
             rootBorder.Child = mainLayout;
             this.Content = rootBorder;
@@ -705,9 +726,14 @@ namespace OmniDictApp {
             Button clearBtn = new Button{Content="清空记录", Height=30, Padding=new Thickness(14,0,14,0)};
             clearBtn.Style = Win11Theme.CreateButtonStyle(false);
             clearBtn.Click += (s, e) => {
+                if (historyItems.Count == 0) {
+                    ShowToast("暂无历史记录可清空", ToastType.Info);
+                    return;
+                }
                 historyItems.Clear(); historyList.Items.Clear();
                 statusText.Text = "历史已清空";
                 HistoryStore.Save(historyItems);
+                ShowToast("历史记录已清空", ToastType.Success);
             };
             DockPanel.SetDock(clearBtn, Dock.Left); tb.Children.Add(clearBtn);
 
@@ -882,6 +908,9 @@ namespace OmniDictApp {
                             setModelBox.Text = cur;
                             setModelPopup.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
                             setModelPopup.IsOpen = true;
+                            ShowToast(string.Format("成功拉取 {0} 个可用模型", ids.Count), ToastType.Success);
+                        } else {
+                            ShowToast("未能获取到模型列表，请检查配置与网络", ToastType.Warning);
                         }
                     });
                 });
@@ -925,6 +954,7 @@ namespace OmniDictApp {
                 promptPresets.Add(new PromptPreset(n, "请精准拆解并翻译截图内容。"));
                 currentPresetName = n;
                 SyncPresetUi();
+                ShowToast("已新建预设: " + n, ToastType.Success);
             };
             btnBar.Children.Add(addBtn);
 
@@ -950,7 +980,10 @@ namespace OmniDictApp {
                 okBtn.Style = Win11Theme.CreateButtonStyle(true);
                 okBtn.Click += (s2, e2) => {
                     string val = inBox.Text.Trim();
-                    if (!string.IsNullOrEmpty(val)) { cur.Name = val; currentPresetName = val; SyncPresetUi(); }
+                    if (!string.IsNullOrEmpty(val)) {
+                        cur.Name = val; currentPresetName = val; SyncPresetUi();
+                        ShowToast("预设已重命名为: " + val, ToastType.Success);
+                    }
                     win.Close();
                 };
                 wbtns.Children.Add(okBtn);
@@ -967,10 +1000,11 @@ namespace OmniDictApp {
             Button delBtn = new Button{Content="删除", Height=30, Padding=new Thickness(10,0,10,0), Margin=new Thickness(6,0,0,0)};
             delBtn.Style = Win11Theme.CreateButtonStyle(false);
             delBtn.Click += (s, e) => {
-                if (promptPresets.Count <= 1) { MessageBox.Show("至少保留一个预设！", "提示"); return; }
+                if (promptPresets.Count <= 1) { ShowToast("至少保留一个预设！", ToastType.Warning); return; }
                 promptPresets.RemoveAll(x => x.Name == currentPresetName);
                 currentPresetName = promptPresets[0].Name;
                 SyncPresetUi();
+                ShowToast("预设已删除", ToastType.Info);
             };
             btnBar.Children.Add(delBtn);
 
@@ -981,6 +1015,7 @@ namespace OmniDictApp {
                     promptPresets = OmniDictConfig.GetDefaultPresets();
                     currentPresetName = promptPresets[0].Name;
                     SyncPresetUi();
+                    ShowToast("已恢复内置默认预设", ToastType.Success);
                 }
             };
             btnBar.Children.Add(defBtn);
@@ -1127,6 +1162,172 @@ namespace OmniDictApp {
             if (cur != null) setPromptBox.Text = cur.Content;
         }
 
+        private void InitToast() {
+            toastBorder = new Border {
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(14, 6, 16, 6),
+                BorderThickness = new Thickness(1),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 8, 0, 0),
+                Visibility = Visibility.Collapsed,
+                Opacity = 0,
+                Cursor = Cursors.Hand
+            };
+            Panel.SetZIndex(toastBorder, 999);
+            toastBorder.Effect = new DropShadowEffect {
+                BlurRadius = 16,
+                Color = Colors.Black,
+                Opacity = 0.28,
+                ShadowDepth = 3,
+                Direction = 270
+            };
+
+            toastTranslate = new TranslateTransform(0, -14);
+            toastBorder.RenderTransform = toastTranslate;
+
+            StackPanel sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+            toastIcon = new TextBlock {
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            sp.Children.Add(toastIcon);
+
+            toastText = new TextBlock {
+                FontSize = 12.5,
+                FontWeight = FontWeights.Normal,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")
+            };
+            sp.Children.Add(toastText);
+
+            toastBorder.Child = sp;
+
+            toastBorder.MouseLeftButtonDown += (s, e) => {
+                DismissToast();
+            };
+            toastBorder.MouseEnter += (s, e) => {
+                if (toastTimer != null) toastTimer.Stop();
+            };
+            toastBorder.MouseLeave += (s, e) => {
+                if (toastBorder != null && toastBorder.Visibility == Visibility.Visible && toastTimer != null) {
+                    toastTimer.Start();
+                }
+            };
+
+            toastTimer = new DispatcherTimer();
+            toastTimer.Interval = TimeSpan.FromMilliseconds(2500);
+            toastTimer.Tick += (s, e) => {
+                toastTimer.Stop();
+                DismissToast();
+            };
+        }
+
+        public void ShowToast(string message, ToastType type = ToastType.Success) {
+            if (!this.Dispatcher.CheckAccess()) {
+                this.Dispatcher.BeginInvoke(new Action(() => ShowToast(message, type)));
+                return;
+            }
+
+            if (toastBorder == null) return;
+            currentToastType = type;
+
+            if (!this.IsVisible || this.WindowState == WindowState.Minimized) {
+                if (trayIcon != null) {
+                    var icon = System.Windows.Forms.ToolTipIcon.Info;
+                    if (type == ToastType.Warning) icon = System.Windows.Forms.ToolTipIcon.Warning;
+                    else if (type == ToastType.Error) icon = System.Windows.Forms.ToolTipIcon.Error;
+                    trayIcon.ShowBalloonTip(2000, "OmniDict", message, icon);
+                }
+                return;
+            }
+
+            UpdateToastVisuals(message, type);
+
+            if (toastTimer != null) toastTimer.Stop();
+            toastBorder.Visibility = Visibility.Visible;
+
+            toastBorder.BeginAnimation(UIElement.OpacityProperty, null);
+            toastTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            toastBorder.Opacity = 0.0;
+            toastTranslate.Y = -14.0;
+
+            var fadeIn = new DoubleAnimation {
+                From = 0.0,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(180)
+            };
+            var slideDown = new DoubleAnimation {
+                From = -14.0,
+                To = 0.0,
+                Duration = TimeSpan.FromMilliseconds(220),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            toastBorder.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+            toastTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
+
+            if (toastTimer != null) toastTimer.Start();
+        }
+
+        private void UpdateToastVisuals(string message, ToastType type) {
+            if (toastBorder == null || toastText == null || toastIcon == null) return;
+            bool isDark = Win11Theme.IsDarkTheme;
+            toastBorder.Background = new SolidColorBrush(isDark ? Color.FromArgb(245, 36, 36, 36) : Color.FromArgb(250, 255, 255, 255));
+            toastBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(60, 255, 255, 255) : Color.FromArgb(35, 0, 0, 0));
+            toastText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(240, 240, 240) : Color.FromRgb(25, 25, 25));
+            toastText.Text = message;
+
+            Color iconColor;
+            string iconGlyph;
+            switch (type) {
+                case ToastType.Warning:
+                    iconGlyph = "⚠";
+                    iconColor = isDark ? Color.FromRgb(252, 225, 0) : Color.FromRgb(180, 100, 0);
+                    break;
+                case ToastType.Error:
+                    iconGlyph = "✕";
+                    iconColor = isDark ? Color.FromRgb(255, 153, 164) : Color.FromRgb(196, 43, 28);
+                    break;
+                case ToastType.Info:
+                    iconGlyph = "ℹ";
+                    iconColor = isDark ? Color.FromRgb(96, 205, 255) : Color.FromRgb(0, 103, 192);
+                    break;
+                case ToastType.Success:
+                default:
+                    iconGlyph = "✔";
+                    iconColor = isDark ? Color.FromRgb(108, 203, 95) : Color.FromRgb(16, 124, 65);
+                    break;
+            }
+            toastIcon.Text = iconGlyph;
+            toastIcon.Foreground = new SolidColorBrush(iconColor);
+        }
+
+        private void DismissToast() {
+            if (toastBorder == null || toastBorder.Visibility != Visibility.Visible) return;
+            if (toastTimer != null) toastTimer.Stop();
+
+            var fadeOut = new DoubleAnimation {
+                To = 0.0,
+                Duration = TimeSpan.FromMilliseconds(180)
+            };
+            var slideUp = new DoubleAnimation {
+                To = -10.0,
+                Duration = TimeSpan.FromMilliseconds(180),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            };
+            fadeOut.Completed += (s, e) => {
+                if (toastBorder.Opacity <= 0.05) {
+                    toastBorder.Visibility = Visibility.Collapsed;
+                }
+            };
+            toastBorder.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+            toastTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
+        }
+
         private void SaveAllSettings() {
             if (setApiBaseBox != null) apiBase = setApiBaseBox.Text.Trim();
             if (setApiKeyBox != null) apiKey = setApiKeyBox.Text.Trim();
@@ -1137,7 +1338,7 @@ namespace OmniDictApp {
             double sy = floatingWin != null && floatingWin.HasCustomPosition ? floatingWin.LastY : -1;
             OmniDictConfig.Save(apiBase, apiKey, currentModel, useVision, sx, sy, currentPresetName, promptPresets);
             ApplyTheme();
-            MessageBox.Show("设置已保存！", "OmniDict", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowToast("设置已保存！", ToastType.Success);
         }
 
         private Border WrapCard(UIElement content) {
@@ -1221,6 +1422,9 @@ namespace OmniDictApp {
             }
             
             if (setVisionToggle != null) setVisionToggle.UpdateVisual();
+            if (toastBorder != null && toastBorder.Visibility == Visibility.Visible) {
+                UpdateToastVisuals(toastText.Text, currentToastType);
+            }
             SwitchNav(panel1.Visibility == Visibility.Visible ? 1 : (panel2.Visibility == Visibility.Visible ? 2 : (panel3.Visibility == Visibility.Visible ? 3 : 4)));
             RefreshAllCards();
         }
