@@ -420,6 +420,7 @@ namespace OmniDictApp {
 
         // Navigation elements (Win11 Twinkle Tray style)
         private Border navItem1, navItem2, navItem3, navItem4;
+        private TextBlock navIcon1, navIcon2, navIcon3, navIcon4;
         private TextBlock navText1, navText2, navText3, navText4;
         private Border ind1, ind2, ind3, ind4;
         private Grid panel1, panel2, panel3, panel4;
@@ -448,7 +449,17 @@ namespace OmniDictApp {
         private System.Windows.Controls.Primitives.Popup setPresetPopup;
 
         public MainWindow() {
-            try{byte[] _ib=Convert.FromBase64String(EmbeddedIcon.IcoB64);var _ms=new System.IO.MemoryStream(_ib);var _dec=new System.Windows.Media.Imaging.IconBitmapDecoder(_ms,System.Windows.Media.Imaging.BitmapCreateOptions.None,System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);if(_dec.Frames.Count>0){var _fr=_dec.Frames[0];_fr.Freeze();this.Icon=_fr;}}catch(Exception _ex){Logger.Error("WindowIcon",_ex);}
+            try {
+                byte[] _ib = Convert.FromBase64String(EmbeddedIcon.IcoB64);
+                var _ms = new System.IO.MemoryStream(_ib);
+                var _dec = new System.Windows.Media.Imaging.IconBitmapDecoder(_ms, System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                BitmapFrame _best = null;
+                foreach (var fr in _dec.Frames) {
+                    if (fr.PixelWidth == 32 || fr.PixelWidth == 48 || fr.PixelWidth == 24) { _best = fr; break; }
+                }
+                if (_best == null && _dec.Frames.Count > 0) _best = _dec.Frames[_dec.Frames.Count - 1];
+                if (_best != null) { _best.Freeze(); this.Icon = _best; }
+            } catch(Exception _ex) { Logger.Error("WindowIcon", _ex); }
             LoadOmniConfig(); Logger.Info("Config model="+currentModel+" preset="+currentPresetName);
             InitUI(); InitTray();
             floatingWin=new FloatingResultWindow();
@@ -540,13 +551,11 @@ namespace OmniDictApp {
 
             // App Brand Header
             DockPanel brandHdr = new DockPanel{LastChildFill=false, Margin=new Thickness(6,0,0,20)};
-            Border brandBadge = new Border{
-                Width=24, Height=24, CornerRadius=new CornerRadius(6),
-                Background=new SolidColorBrush(Color.FromRgb(0,103,192)),
-                Margin=new Thickness(0,0,10,0), VerticalAlignment=VerticalAlignment.Center};
-            brandBadge.Child = new TextBlock{Text="O", Foreground=Brushes.White, FontWeight=FontWeights.Bold,
-                FontSize=12, HorizontalAlignment=HorizontalAlignment.Center, VerticalAlignment=VerticalAlignment.Center};
-            brandHdr.Children.Add(brandBadge);
+            System.Windows.Controls.Image brandIcon = new System.Windows.Controls.Image{
+                Width=24, Height=24, Margin=new Thickness(0,0,10,0), VerticalAlignment=VerticalAlignment.Center,
+                Source=this.Icon};
+            RenderOptions.SetBitmapScalingMode(brandIcon, BitmapScalingMode.HighQuality);
+            brandHdr.Children.Add(brandIcon);
 
             brandTitleText = new TextBlock{
                 Text="OmniDict", FontWeight=FontWeights.SemiBold, FontSize=15,
@@ -557,10 +566,10 @@ namespace OmniDictApp {
 
             // Nav Items Stack
             StackPanel navStack = new StackPanel();
-            navItem1 = CreateNavItem("⏱", "解析历史", out navText1, out ind1);
-            navItem2 = CreateNavItem("⚙", "通用设置", out navText2, out ind2);
-            navItem3 = CreateNavItem("📝", "提示词预设", out navText3, out ind3);
-            navItem4 = CreateNavItem("⌨", "快捷键与操作", out navText4, out ind4);
+            navItem1 = CreateNavItem("", "解析历史", out navIcon1, out navText1, out ind1);
+            navItem2 = CreateNavItem("", "通用设置", out navIcon2, out navText2, out ind2);
+            navItem3 = CreateNavItem("", "提示词预设", out navIcon3, out navText3, out ind3);
+            navItem4 = CreateNavItem("", "快捷键与操作", out navIcon4, out navText4, out ind4);
 
             navItem1.MouseLeftButtonDown += (s, e) => SwitchNav(1);
             navItem2.MouseLeftButtonDown += (s, e) => SwitchNav(2);
@@ -651,7 +660,7 @@ namespace OmniDictApp {
             ApplyTheme();
         }
 
-        private Border CreateNavItem(string icon, string title, out TextBlock tb, out Border indicator) {
+        private Border CreateNavItem(string icon, string title, out TextBlock ic, out TextBlock tb, out Border indicator) {
             Border item = new Border{
                 CornerRadius=new CornerRadius(6),
                 Padding=new Thickness(10,8,10,8),
@@ -663,16 +672,18 @@ namespace OmniDictApp {
             ig.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
             ig.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1, GridUnitType.Star)});
 
-            indicator = new Border{
+            Border ind = new Border{
                 Width=3, Height=16, CornerRadius=new CornerRadius(1.5),
                 Background=new SolidColorBrush(Color.FromRgb(227,85,54)),
                 Margin=new Thickness(-6,0,8,0),
                 Visibility=Visibility.Collapsed};
-            Grid.SetColumn(indicator, 0); ig.Children.Add(indicator);
+            indicator = ind;
+            Grid.SetColumn(ind, 0); ig.Children.Add(ind);
 
-            TextBlock ic = new TextBlock{
-                Text=icon, FontSize=14, Width=20, Margin=new Thickness(0,0,10,0),
-                VerticalAlignment=VerticalAlignment.Center};
+            ic = new TextBlock{
+                Text=icon, FontSize=14, Width=22, Margin=new Thickness(0,0,10,0),
+                VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol")};
             Grid.SetColumn(ic, 1); ig.Children.Add(ic);
 
             tb = new TextBlock{
@@ -680,6 +691,18 @@ namespace OmniDictApp {
                 VerticalAlignment=VerticalAlignment.Center,
                 FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei")};
             Grid.SetColumn(tb, 2); ig.Children.Add(tb);
+
+            item.MouseEnter += (s, e) => {
+                if (ind.Visibility != Visibility.Visible) {
+                    bool dark = Win11Theme.IsDarkTheme;
+                    item.Background = new SolidColorBrush(dark ? Color.FromArgb(25, 255, 255, 255) : Color.FromArgb(15, 0, 0, 0));
+                }
+            };
+            item.MouseLeave += (s, e) => {
+                if (ind.Visibility != Visibility.Visible) {
+                    item.Background = Brushes.Transparent;
+                }
+            };
 
             item.Child = ig;
             return item;
@@ -697,22 +720,27 @@ namespace OmniDictApp {
             else if (index == 3) viewHeaderTitle.Text = "提示词预设管理";
             else if (index == 4) viewHeaderTitle.Text = "快捷键与操作指南";
 
-            UpdateNavItemState(navItem1, navText1, ind1, index == 1, isDark);
-            UpdateNavItemState(navItem2, navText2, ind2, index == 2, isDark);
-            UpdateNavItemState(navItem3, navText3, ind3, index == 3, isDark);
-            UpdateNavItemState(navItem4, navText4, ind4, index == 4, isDark);
+            UpdateNavItemState(navItem1, navIcon1, navText1, ind1, index == 1, isDark);
+            UpdateNavItemState(navItem2, navIcon2, navText2, ind2, index == 2, isDark);
+            UpdateNavItemState(navItem3, navIcon3, navText3, ind3, index == 3, isDark);
+            UpdateNavItemState(navItem4, navIcon4, navText4, ind4, index == 4, isDark);
         }
 
-        private void UpdateNavItemState(Border item, TextBlock text, Border ind, bool active, bool isDark) {
+        private void UpdateNavItemState(Border item, TextBlock icon, TextBlock text, Border ind, bool active, bool isDark) {
             ind.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            SolidColorBrush activeBrush = new SolidColorBrush(isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(0, 0, 0));
+            SolidColorBrush inactiveBrush = new SolidColorBrush(isDark ? Color.FromRgb(210, 210, 210) : Color.FromRgb(50, 50, 50));
+
             if (active) {
                 item.Background = new SolidColorBrush(isDark ? Color.FromArgb(45, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
                 text.FontWeight = FontWeights.SemiBold;
-                text.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(255, 255, 255) : Color.FromRgb(10, 10, 10));
+                text.Foreground = activeBrush;
+                if (icon != null) icon.Foreground = activeBrush;
             } else {
                 item.Background = Brushes.Transparent;
                 text.FontWeight = FontWeights.Normal;
-                text.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(185, 185, 195) : Color.FromRgb(80, 80, 90));
+                text.Foreground = inactiveBrush;
+                if (icon != null) icon.Foreground = inactiveBrush;
             }
         }
 
@@ -1835,16 +1863,22 @@ namespace OmniDictApp {
 
             // Header
             DockPanel h = new DockPanel { LastChildFill = false, Margin = new Thickness(2, 2, 2, 8) };
-            Border bg = new Border {
-                Width = 20, Height = 20, CornerRadius = new CornerRadius(4),
-                Background = new SolidColorBrush(Color.FromRgb(0, 103, 192)), VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 0) };
-            bg.Child = new TextBlock {
-                Text = "O", Foreground = Brushes.White, FontSize = 11, FontWeight = FontWeights.Bold,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            System.Windows.Controls.Image floatIcon = new System.Windows.Controls.Image {
+                Width = 20, Height = 20, Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center };
+            try {
+                byte[] _fib = Convert.FromBase64String(EmbeddedIcon.IcoB64);
+                var _fms = new System.IO.MemoryStream(_fib);
+                var _fdec = new System.Windows.Media.Imaging.IconBitmapDecoder(_fms, System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                BitmapFrame _fbest = null;
+                foreach (var fr in _fdec.Frames) { if (fr.PixelWidth == 32 || fr.PixelWidth == 24) { _fbest = fr; break; } }
+                if (_fbest == null && _fdec.Frames.Count > 0) _fbest = _fdec.Frames[_fdec.Frames.Count - 1];
+                if (_fbest != null) { _fbest.Freeze(); floatIcon.Source = _fbest; this.Icon = _fbest; }
+            } catch {}
+            RenderOptions.SetBitmapScalingMode(floatIcon, BitmapScalingMode.HighQuality);
 
             StackPanel leftControls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            leftControls.Children.Add(bg);
+            leftControls.Children.Add(floatIcon);
 
             // Header compact thumbnail pill (hover to view full image in tooltip)
             previewImg = new System.Windows.Controls.Image {
