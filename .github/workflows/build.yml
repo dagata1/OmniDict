@@ -34,14 +34,15 @@ jobs:
             /out:"OmniDict.exe" "Program.cs"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Item OmniDict.exe | Format-List Name, Length
+          Compress-Archive -Path OmniDict.exe -DestinationPath OmniDict.zip -Force
 
       - uses: actions/upload-artifact@v4
         with:
           name: OmniDict
-          path: OmniDict.exe
+          path: OmniDict.zip
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: OmniDict.exe
+          files: OmniDict.zip
