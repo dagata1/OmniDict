@@ -731,8 +731,11 @@ namespace OmniDictApp {
     public class MainWindow : Window {
         private const int  HOTKEY_ID_ALT_Q  = 9002;
         private const int  HOTKEY_ID_ALT_W  = 9003;
+        private const int  HOTKEY_ID_ALT_T  = 9004;
         private const uint MOD_ALT=0x0001,MOD_NOREPEAT=0x4000;
-        private const uint VK_Q=0x51,VK_W=0x57;
+        private const uint VK_Q=0x51,VK_W=0x57,VK_T=0x54;
+        [DllImport("user32.dll")] private static extern void keybd_event(byte bVk,byte bScan,uint dwFlags,UIntPtr dwExtraInfo);
+        [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
         private const int  WM_HOTKEY=0x0312;
         [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd,int id,uint fsModifiers,uint vk);
         [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd,int id);
@@ -1220,8 +1223,11 @@ namespace OmniDictApp {
             setModelPopup = new System.Windows.Controls.Primitives.Popup{
                 PlacementTarget=cmbGrid, Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
                 StaysOpen=false, Child=setModelListBox};
+            DateTime mpClosedAt = DateTime.MinValue;
+            setModelPopup.Closed += (s, e) => mpClosedAt = DateTime.Now;
 
             arrowBtn.Click += (s, e) => {
+                if ((DateTime.Now - mpClosedAt).TotalMilliseconds < 250) return;
                 if (setModelListBox.Items.Count > 0) {
                     setModelPopup.Width = cmbGrid.ActualWidth + arrowBtn.ActualWidth;
                     setModelPopup.IsOpen = !setModelPopup.IsOpen;
@@ -1427,15 +1433,22 @@ namespace OmniDictApp {
             setPresetPopup = new System.Windows.Controls.Primitives.Popup{
                 PlacementTarget=pCmbGrid, Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
                 StaysOpen=false, Child=setPresetListBox};
+            // A click on the combo while the popup is open first closes it (StaysOpen=false);
+            // ignore the toggle that follows so it doesn't reopen and flicker.
+            DateTime ppClosedAt = DateTime.MinValue;
+            setPresetPopup.Closed += (s, e) => ppClosedAt = DateTime.Now;
+            setPresetNameText.Focusable = false;
 
             Action togglePP = () => {
+                if ((DateTime.Now - ppClosedAt).TotalMilliseconds < 250) return;
                 if (setPresetListBox.Items.Count > 0) {
                     setPresetPopup.Width = pCmbGrid.ActualWidth + pArrowBtn.ActualWidth;
                     setPresetPopup.IsOpen = !setPresetPopup.IsOpen;
                 }
             };
             pArrowBtn.Click += (s, e) => togglePP();
-            setPresetNameText.PreviewMouseLeftButtonDown += (s, e) => { togglePP(); e.Handled = true; };
+            setPresetNameText.PreviewMouseLeftButtonUp += (s, e) => { togglePP(); e.Handled = true; };
+            setPresetNameText.PreviewMouseLeftButtonDown += (s, e) => { e.Handled = true; };
 
             setPresetListBox.SelectionChanged += (s, e) => {
                 if (setPresetListBox.SelectedItem != null) {
@@ -1495,6 +1508,13 @@ namespace OmniDictApp {
                 Foreground=new SolidColorBrush(Color.FromRgb(227,85,54)), VerticalAlignment=VerticalAlignment.Center,
                 FontFamily=new FontFamily("Consolas, Segoe UI")};
             card.Children.Add(CreateSettingsCardRow("触发截图与解析", "在游戏、全屏软件、浏览器或桌面任意区域唤醒截屏并分析", hk1));
+            card.Children.Add(CreateDivider());
+
+            TextBlock hkT = new TextBlock{
+                Text="Alt + T", FontWeight=FontWeights.SemiBold,
+                Foreground=new SolidColorBrush(Color.FromRgb(227,85,54)), VerticalAlignment=VerticalAlignment.Center,
+                FontFamily=new FontFamily("Consolas, Segoe UI")};
+            card.Children.Add(CreateSettingsCardRow("划词解析", "先选中任意文字再按下，直接解析选中内容，无需截图", hkT));
             card.Children.Add(CreateDivider());
 
             TextBlock hk2 = new TextBlock{
@@ -1813,11 +1833,13 @@ namespace OmniDictApp {
             m1.Click+=(s,e)=>{this.Show();this.Activate();SwitchNav(1);};
             var m2=new System.Windows.Forms.ToolStripMenuItem("截图解析 (Alt+Q)");
             m2.Click+=(s,e)=>TriggerSnipAndAnalyze();
+            var m5=new System.Windows.Forms.ToolStripMenuItem("划词解析 (Alt+T)");
+            m5.Click+=(s,e)=>TriggerSelectedTextAnalyze();
             var m3=new System.Windows.Forms.ToolStripMenuItem("设置");
             m3.Click+=(s,e)=>{this.Show();this.Activate();SwitchNav(2);};
             var m4=new System.Windows.Forms.ToolStripMenuItem("退出");
             m4.Click+=(s,e)=>{isRealExit=true;this.Close();System.Windows.Application.Current.Shutdown();};
-            menu.Items.AddRange(new System.Windows.Forms.ToolStripItem[]{m1,m2,m3,new System.Windows.Forms.ToolStripSeparator(),m4});
+            menu.Items.AddRange(new System.Windows.Forms.ToolStripItem[]{m1,m2,m5,m3,new System.Windows.Forms.ToolStripSeparator(),m4});
             Win11Theme.StyleTrayMenu(menu);
             trayIcon.ContextMenuStrip=menu;
         }
@@ -1832,6 +1854,9 @@ namespace OmniDictApp {
             bool ok3=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_W,MOD_ALT|MOD_NOREPEAT,VK_W);
             if(!ok3) ok3=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_W,MOD_ALT,VK_W);
             Logger.Info("Alt+W:"+(ok3?"OK":"FAIL"));
+            bool ok4=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_T,MOD_ALT|MOD_NOREPEAT,VK_T);
+            if(!ok4) ok4=RegisterHotKey(windowHandle,HOTKEY_ID_ALT_T,MOD_ALT,VK_T);
+            Logger.Info("Alt+T:"+(ok4?"OK":"FAIL"));
         }
 
         private bool isRealExit=false;
@@ -1840,6 +1865,7 @@ namespace OmniDictApp {
             if(trayIcon!=null){trayIcon.Visible=false;trayIcon.Dispose();}
             UnregisterHotKey(windowHandle,HOTKEY_ID_ALT_Q);
             UnregisterHotKey(windowHandle,HOTKEY_ID_ALT_W);
+            UnregisterHotKey(windowHandle,HOTKEY_ID_ALT_T);
             HistoryStore.Save(historyItems);
             Logger.Info("History saved, count="+historyItems.Count);
         }
@@ -1849,6 +1875,10 @@ namespace OmniDictApp {
                 if(id==HOTKEY_ID_ALT_Q){
                     Logger.Info("Hotkey id="+id);
                     TriggerSnipAndAnalyze();
+                    handled=true;
+                } else if(id==HOTKEY_ID_ALT_T){
+                    Logger.Info("Hotkey selected text id="+id);
+                    TriggerSelectedTextAnalyze();
                     handled=true;
                 } else if(id==HOTKEY_ID_ALT_W){
                     Logger.Info("Hotkey close float id="+id);
@@ -1958,6 +1988,78 @@ namespace OmniDictApp {
                             fw.ShowLoading(-1, -1, retryBytes);
                             AnalyzeImageForFloating(fw, retryBytes);
                         });
+                    });
+                }
+            });
+        }
+
+        // Alt+T: copy the current selection from the foreground app and analyze it as text.
+        public void TriggerSelectedTextAnalyze() {
+            POINT pt; GetCursorPos(out pt);
+            Task.Run(()=>{
+                string oldText=null;
+                this.Dispatcher.Invoke(()=>{ try{ if(Clipboard.ContainsText()) oldText=Clipboard.GetText(); }catch{} });
+                // Wait for the user to release Alt/T so the simulated keystroke is a clean Ctrl+C.
+                for(int i=0;i<40;i++){
+                    if((GetAsyncKeyState(0x12)&0x8000)==0 && (GetAsyncKeyState((int)VK_T)&0x8000)==0) break;
+                    Thread.Sleep(15);
+                }
+                if((GetAsyncKeyState(0x12)&0x8000)!=0) keybd_event(0x12,0,0x0002,UIntPtr.Zero);
+                uint seqBefore=GetClipboardSequenceNumber();
+                keybd_event(0x11,0,0,UIntPtr.Zero);
+                keybd_event(0x43,0,0,UIntPtr.Zero);
+                keybd_event(0x43,0,0x0002,UIntPtr.Zero);
+                keybd_event(0x11,0,0x0002,UIntPtr.Zero);
+                string sel=null;
+                for(int i=0;i<30;i++){
+                    Thread.Sleep(25);
+                    if(GetClipboardSequenceNumber()!=seqBefore){
+                        Thread.Sleep(30);
+                        this.Dispatcher.Invoke(()=>{ try{ if(Clipboard.ContainsText()) sel=Clipboard.GetText(); }catch(Exception ex){Logger.Error("ReadSelection",ex);} });
+                        break;
+                    }
+                }
+                // Put back what the user had on the clipboard.
+                if(sel!=null && oldText!=null && oldText!=sel){
+                    string _old=oldText;
+                    this.Dispatcher.Invoke(()=>{ try{ Clipboard.SetText(_old); }catch{} });
+                }
+                Logger.Info("Selected text len="+(sel==null?0:sel.Length));
+                this.Dispatcher.Invoke(()=>{
+                    floatingWin.ShowLoading(pt.X,pt.Y,null);
+                    if(string.IsNullOrWhiteSpace(sel)){
+                        floatingWin.ShowError("没有检测到选中的文字，请先选中文字再按 Alt+T。",null);
+                        return;
+                    }
+                    AnalyzeTextForFloating(floatingWin,sel.Trim());
+                });
+            });
+        }
+
+        private void AnalyzeTextForFloating(FloatingResultWindow fw,string text) {
+            string sysPmtRaw = GetActiveSystemPrompt();
+            int gen;
+            lock(convLock){ gen=++convGen; convMessages=new List<string>(); }
+            Task.Run(()=>{
+                try{
+                    var msgs=new List<string>();
+                    msgs.Add("{\"role\":\"system\",\"content\":\""+J(sysPmtRaw)+"\"}");
+                    string up="用户选中的文字内容：\n"+text+"\n\n请分析并提供精准翻译与内容深度拆解。";
+                    msgs.Add("{\"role\":\"user\",\"content\":\""+J(up)+"\"}");
+                    string result=PostAI(BuildChatBody(msgs));
+                    Logger.Info("AI chars="+result.Length);
+                    msgs.Add("{\"role\":\"assistant\",\"content\":\""+J(result)+"\"}");
+                    lock(convLock){ if(gen!=convGen) return; convMessages=msgs; }
+                    string _r=result,_q=text;
+                    this.Dispatcher.Invoke(()=>{fw.ShowResult(_r);AddHistory("划词",_q,_r);});
+                }catch(Exception ex){
+                    Logger.Error("AnalyzeText",ex);
+                    lock(convLock){ if(gen!=convGen) return; }
+                    string _t=text;
+                    this.Dispatcher.Invoke(()=>{
+                        string msg = "解析失败: " + ex.Message;
+                        if (ex is WebException && ex.Message.Contains("超时")) msg = "解析失败: 请求远程模型超时，可能是网络波动或服务繁忙。";
+                        fw.ShowError(msg, ()=>{ fw.ShowLoading(-1, -1, null); AnalyzeTextForFloating(fw, _t); });
                     });
                 }
             });
