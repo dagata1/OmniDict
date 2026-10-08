@@ -36,7 +36,7 @@ namespace OmniDictApp {
             AppDomain.CurrentDomain.UnhandledException+=(s,e)=>{try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+e.ExceptionObject+"\n",System.Text.Encoding.UTF8);}catch{}};
             // csc-built .NET 4.x apps without an app.config may default to legacy TLS; make sure TLS 1.2 is enabled.
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch {}
-            try { new App().Run(new MainWindow()); }
+            try { var app = new App(); Win11Theme.InstallGlobalStyles(app); app.Run(new MainWindow()); }
             catch(Exception ex){try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+ex.ToString()+"\n",System.Text.Encoding.UTF8);}catch{}}
         }
     }
@@ -106,6 +106,268 @@ namespace OmniDictApp {
         public static Color BorderStrong { get { return IsDarkTheme ? Color.FromArgb(70, 255, 255, 255) : Color.FromArgb(70, 0, 0, 0); } }
         public static Color Accent { get { return Color.FromRgb(0, 103, 192); } }
         public static Color AccentHover { get { return Color.FromRgb(24, 120, 210); } }
+
+
+        // ---- Global Win11 styles (scrollbars, buttons, list items, tooltips, context menus) ----
+        private static ResourceDictionary globalStyles;
+        private const string GlobalStylesXaml = @"<ResourceDictionary xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"" xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"">
+  <Style x:Key=""W11SbPage"" TargetType=""RepeatButton"">
+    <Setter Property=""Focusable"" Value=""False""/>
+    <Setter Property=""IsTabStop"" Value=""False""/>
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""RepeatButton""><Border Background=""Transparent""/></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key=""W11SbThumb"" TargetType=""Thumb"">
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""Thumb"">
+      <Border x:Name=""b"" CornerRadius=""3"" Background=""@THUMB@""/>
+      <ControlTemplate.Triggers>
+        <Trigger Property=""IsMouseOver"" Value=""True""><Setter TargetName=""b"" Property=""Background"" Value=""@THUMBH@""/></Trigger>
+        <Trigger Property=""IsDragging"" Value=""True""><Setter TargetName=""b"" Property=""Background"" Value=""@THUMBH@""/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""ScrollBar"">
+    <Setter Property=""Stylus.IsFlicksEnabled"" Value=""False""/>
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""Background"" Value=""Transparent""/>
+    <Setter Property=""Width"" Value=""12""/>
+    <Setter Property=""MinWidth"" Value=""12""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""ScrollBar"">
+      <Border x:Name=""bg"" Background=""Transparent"" CornerRadius=""6"">
+        <Track x:Name=""PART_Track"" IsDirectionReversed=""True"" Margin=""0,4,0,4"">
+          <Track.DecreaseRepeatButton><RepeatButton Style=""{StaticResource W11SbPage}"" Command=""ScrollBar.PageUpCommand""/></Track.DecreaseRepeatButton>
+          <Track.IncreaseRepeatButton><RepeatButton Style=""{StaticResource W11SbPage}"" Command=""ScrollBar.PageDownCommand""/></Track.IncreaseRepeatButton>
+          <Track.Thumb><Thumb x:Name=""th"" Style=""{StaticResource W11SbThumb}"" Width=""3"" MinHeight=""24"" HorizontalAlignment=""Center""/></Track.Thumb>
+        </Track>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property=""IsMouseOver"" Value=""True"">
+          <Setter TargetName=""th"" Property=""Width"" Value=""6""/>
+          <Setter TargetName=""bg"" Property=""Background"" Value=""@TRACK@""/>
+        </Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+    <Style.Triggers>
+      <Trigger Property=""Orientation"" Value=""Horizontal"">
+        <Setter Property=""Width"" Value=""Auto""/>
+        <Setter Property=""MinWidth"" Value=""0""/>
+        <Setter Property=""Height"" Value=""12""/>
+        <Setter Property=""MinHeight"" Value=""12""/>
+        <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""ScrollBar"">
+          <Border x:Name=""bg"" Background=""Transparent"" CornerRadius=""6"">
+            <Track x:Name=""PART_Track"" IsDirectionReversed=""False"" Margin=""4,0,4,0"">
+              <Track.DecreaseRepeatButton><RepeatButton Style=""{StaticResource W11SbPage}"" Command=""ScrollBar.PageLeftCommand""/></Track.DecreaseRepeatButton>
+              <Track.IncreaseRepeatButton><RepeatButton Style=""{StaticResource W11SbPage}"" Command=""ScrollBar.PageRightCommand""/></Track.IncreaseRepeatButton>
+              <Track.Thumb><Thumb x:Name=""th"" Style=""{StaticResource W11SbThumb}"" Height=""3"" MinWidth=""24"" VerticalAlignment=""Center""/></Track.Thumb>
+            </Track>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property=""IsMouseOver"" Value=""True"">
+              <Setter TargetName=""th"" Property=""Height"" Value=""6""/>
+              <Setter TargetName=""bg"" Property=""Background"" Value=""@TRACK@""/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+  <Style TargetType=""ScrollViewer"">
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""ScrollViewer"">
+      <Grid Background=""{TemplateBinding Background}"">
+        <Grid.ColumnDefinitions><ColumnDefinition Width=""*""/><ColumnDefinition Width=""Auto""/></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height=""*""/><RowDefinition Height=""Auto""/></Grid.RowDefinitions>
+        <ScrollContentPresenter x:Name=""PART_ScrollContentPresenter"" Grid.Column=""0"" Grid.Row=""0"" Margin=""{TemplateBinding Padding}"" CanContentScroll=""{TemplateBinding CanContentScroll}"" CanHorizontallyScroll=""False"" CanVerticallyScroll=""False"" Content=""{TemplateBinding Content}"" ContentTemplate=""{TemplateBinding ContentTemplate}""/>
+        <ScrollBar x:Name=""PART_VerticalScrollBar"" Grid.Column=""1"" Grid.Row=""0"" Orientation=""Vertical"" Minimum=""0"" Maximum=""{TemplateBinding ScrollableHeight}"" Value=""{TemplateBinding VerticalOffset}"" ViewportSize=""{TemplateBinding ViewportHeight}"" Visibility=""{TemplateBinding ComputedVerticalScrollBarVisibility}"" Cursor=""Arrow""/>
+        <ScrollBar x:Name=""PART_HorizontalScrollBar"" Grid.Column=""0"" Grid.Row=""1"" Orientation=""Horizontal"" Minimum=""0"" Maximum=""{TemplateBinding ScrollableWidth}"" Value=""{TemplateBinding HorizontalOffset}"" ViewportSize=""{TemplateBinding ViewportWidth}"" Visibility=""{TemplateBinding ComputedHorizontalScrollBarVisibility}"" Cursor=""Arrow""/>
+      </Grid>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""Button"">
+    <Setter Property=""Cursor"" Value=""Hand""/>
+    <Setter Property=""Background"" Value=""@BTN@""/>
+    <Setter Property=""BorderBrush"" Value=""@BORDER@""/>
+    <Setter Property=""Foreground"" Value=""@FG@""/>
+    <Setter Property=""BorderThickness"" Value=""1""/>
+    <Setter Property=""Padding"" Value=""8,2,8,2""/>
+    <Setter Property=""HorizontalContentAlignment"" Value=""Center""/>
+    <Setter Property=""VerticalContentAlignment"" Value=""Center""/>
+    <Setter Property=""FocusVisualStyle"" Value=""{x:Null}""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""Button"">
+      <Grid>
+        <Border x:Name=""bd"" CornerRadius=""4"" Background=""{TemplateBinding Background}"" BorderBrush=""{TemplateBinding BorderBrush}"" BorderThickness=""{TemplateBinding BorderThickness}""/>
+        <Border x:Name=""ov"" CornerRadius=""4"" Background=""@OVERLAY@"" Opacity=""0""/>
+        <ContentPresenter Margin=""{TemplateBinding Padding}"" HorizontalAlignment=""{TemplateBinding HorizontalContentAlignment}"" VerticalAlignment=""{TemplateBinding VerticalContentAlignment}"" RecognizesAccessKey=""True""/>
+      </Grid>
+      <ControlTemplate.Triggers>
+        <Trigger Property=""IsMouseOver"" Value=""True""><Setter TargetName=""ov"" Property=""Opacity"" Value=""1""/></Trigger>
+        <Trigger Property=""IsPressed"" Value=""True""><Setter TargetName=""ov"" Property=""Opacity"" Value=""0.55""/></Trigger>
+        <Trigger Property=""IsEnabled"" Value=""False""><Setter Property=""Opacity"" Value=""0.4""/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""ListBoxItem"">
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""Background"" Value=""Transparent""/>
+    <Setter Property=""Foreground"" Value=""@FG@""/>
+    <Setter Property=""HorizontalContentAlignment"" Value=""Stretch""/>
+    <Setter Property=""FocusVisualStyle"" Value=""{x:Null}""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""ListBoxItem"">
+      <Grid Margin=""2,1,2,1"">
+        <Border x:Name=""bd"" CornerRadius=""4"" Background=""{TemplateBinding Background}""/>
+        <Border x:Name=""ov"" CornerRadius=""4"" Background=""@OVERLAY@"" Opacity=""0""/>
+        <Border x:Name=""pill"" Width=""3"" Height=""16"" CornerRadius=""1.5"" Background=""@ACCENT@"" HorizontalAlignment=""Left"" VerticalAlignment=""Center"" Visibility=""Collapsed""/>
+        <ContentPresenter Margin=""{TemplateBinding Padding}"" HorizontalAlignment=""{TemplateBinding HorizontalContentAlignment}"" VerticalAlignment=""{TemplateBinding VerticalContentAlignment}""/>
+      </Grid>
+      <ControlTemplate.Triggers>
+        <Trigger Property=""IsMouseOver"" Value=""True""><Setter TargetName=""ov"" Property=""Opacity"" Value=""1""/></Trigger>
+        <Trigger Property=""IsSelected"" Value=""True""><Setter TargetName=""pill"" Property=""Visibility"" Value=""Visible""/><Setter TargetName=""ov"" Property=""Opacity"" Value=""1""/></Trigger>
+        <Trigger Property=""IsEnabled"" Value=""False""><Setter Property=""Opacity"" Value=""0.4""/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""ToolTip"">
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""HasDropShadow"" Value=""True""/>
+    <Setter Property=""Foreground"" Value=""@FG@""/>
+    <Setter Property=""FontSize"" Value=""12""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""ToolTip"">
+      <Border Background=""@MENUBG@"" BorderBrush=""@BORDER@"" BorderThickness=""1"" CornerRadius=""6"" Padding=""8,5,8,5"" Margin=""0,0,4,4"">
+        <ContentPresenter/>
+      </Border>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""ContextMenu"">
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""SnapsToDevicePixels"" Value=""True""/>
+    <Setter Property=""HasDropShadow"" Value=""True""/>
+    <Setter Property=""Foreground"" Value=""@FG@""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""ContextMenu"">
+      <Border Background=""@MENUBG@"" BorderBrush=""@BORDER@"" BorderThickness=""1"" CornerRadius=""8"" Padding=""4"">
+        <StackPanel IsItemsHost=""True"" KeyboardNavigation.DirectionalNavigation=""Cycle""/>
+      </Border>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""MenuItem"">
+    <Setter Property=""OverridesDefaultStyle"" Value=""True""/>
+    <Setter Property=""Foreground"" Value=""@FG@""/>
+    <Setter Property=""Template""><Setter.Value><ControlTemplate TargetType=""MenuItem"">
+      <Border x:Name=""b"" CornerRadius=""4"" Padding=""12,6,24,6"" MinWidth=""140"" Background=""Transparent"">
+        <ContentPresenter ContentSource=""Header"" RecognizesAccessKey=""True""/>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property=""IsHighlighted"" Value=""True""><Setter TargetName=""b"" Property=""Background"" Value=""@OVERLAY@""/></Trigger>
+        <Trigger Property=""IsEnabled"" Value=""False""><Setter Property=""Opacity"" Value=""0.4""/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType=""TextBox"">
+    <Setter Property=""SelectionBrush"" Value=""@ACCENT@""/>
+    <Setter Property=""CaretBrush"" Value=""@FG@""/>
+  </Style>
+  <Style TargetType=""RichTextBox"">
+    <Setter Property=""SelectionBrush"" Value=""@ACCENT@""/>
+    <Setter Property=""CaretBrush"" Value=""@FG@""/>
+  </Style>
+</ResourceDictionary>";
+
+        private static string Hex(Color c) { return "#" + c.A.ToString("X2") + c.R.ToString("X2") + c.G.ToString("X2") + c.B.ToString("X2"); }
+
+        private static ResourceDictionary BuildGlobalStyles() {
+            bool d = IsDarkTheme;
+            string x = GlobalStylesXaml
+                .Replace("@THUMB@", d ? "#8AFFFFFF" : "#72000000")
+                .Replace("@THUMBH@", d ? "#C8FFFFFF" : "#A0000000")
+                .Replace("@TRACK@", d ? "#18FFFFFF" : "#0C000000")
+                .Replace("@BTN@", d ? "#FF2A2A2A" : "#FFFAFAFA")
+                .Replace("@BORDER@", Hex(BorderSubtle))
+                .Replace("@FG@", Hex(FgPrimary))
+                .Replace("@OVERLAY@", d ? "#16FFFFFF" : "#0F000000")
+                .Replace("@ACCENT@", d ? "#FF60CDFF" : "#FF0067C0")
+                .Replace("@MENUBG@", d ? "#FF2C2C2C" : "#FFF9F9F9");
+            return (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(x);
+        }
+
+        public static void InstallGlobalStyles(Application app) {
+            try {
+                globalStyles = BuildGlobalStyles();
+                app.Resources.MergedDictionaries.Add(globalStyles);
+                ThemeChanged += () => app.Dispatcher.Invoke(new Action(() => {
+                    try {
+                        var fresh = BuildGlobalStyles();
+                        int i = app.Resources.MergedDictionaries.IndexOf(globalStyles);
+                        if (i >= 0) app.Resources.MergedDictionaries[i] = fresh; else app.Resources.MergedDictionaries.Add(fresh);
+                        globalStyles = fresh;
+                    } catch (Exception ex) { Logger.Error("Win11Theme.RefreshGlobalStyles", ex); }
+                }));
+            } catch (Exception ex) { Logger.Error("Win11Theme.InstallGlobalStyles", ex); }
+        }
+
+        // Base style for ListBoxItem containers that add their own setters.
+        public static Style ListItemBase() {
+            var app = Application.Current;
+            return app == null ? null : app.TryFindResource(typeof(ListBoxItem)) as Style;
+        }
+
+        // Win11-looking tray menu (WinForms ContextMenuStrip).
+        public static void StyleTrayMenu(System.Windows.Forms.ContextMenuStrip menu) {
+            menu.Renderer = new TrayMenuRenderer();
+            menu.ShowImageMargin = false;
+            menu.Padding = new System.Windows.Forms.Padding(4);
+            menu.Font = new System.Drawing.Font("Segoe UI", 9.5f);
+            menu.Opening += (s, e) => {
+                menu.Renderer = new TrayMenuRenderer();
+                try {
+                    int corner = DWMWCP_ROUND;
+                    DwmSetWindowAttribute(menu.Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
+                } catch {}
+            };
+            foreach (System.Windows.Forms.ToolStripItem it in menu.Items) {
+                if (it is System.Windows.Forms.ToolStripMenuItem) it.Padding = new System.Windows.Forms.Padding(6, 5, 18, 5);
+            }
+        }
+
+        private class TrayColors : System.Windows.Forms.ProfessionalColorTable {
+            private readonly bool d;
+            public TrayColors(bool dark) { d = dark; UseSystemColors = false; }
+            private System.Drawing.Color C(int r, int g, int b) { return System.Drawing.Color.FromArgb(r, g, b); }
+            public override System.Drawing.Color ToolStripDropDownBackground { get { return d ? C(44, 44, 44) : C(249, 249, 249); } }
+            public override System.Drawing.Color MenuBorder { get { return d ? C(60, 60, 60) : C(220, 220, 220); } }
+            public override System.Drawing.Color MenuItemBorder { get { return d ? C(61, 61, 61) : C(234, 234, 234); } }
+            public override System.Drawing.Color MenuItemSelected { get { return d ? C(61, 61, 61) : C(234, 234, 234); } }
+            public override System.Drawing.Color MenuItemSelectedGradientBegin { get { return MenuItemSelected; } }
+            public override System.Drawing.Color MenuItemSelectedGradientEnd { get { return MenuItemSelected; } }
+            public override System.Drawing.Color ImageMarginGradientBegin { get { return ToolStripDropDownBackground; } }
+            public override System.Drawing.Color ImageMarginGradientMiddle { get { return ToolStripDropDownBackground; } }
+            public override System.Drawing.Color ImageMarginGradientEnd { get { return ToolStripDropDownBackground; } }
+            public override System.Drawing.Color SeparatorDark { get { return d ? C(64, 64, 64) : C(225, 225, 225); } }
+            public override System.Drawing.Color SeparatorLight { get { return ToolStripDropDownBackground; } }
+        }
+
+        private class TrayMenuRenderer : System.Windows.Forms.ToolStripProfessionalRenderer {
+            private readonly bool d;
+            public TrayMenuRenderer() : base(new TrayColors(IsDarkTheme)) { d = IsDarkTheme; RoundedEdges = true; }
+            protected override void OnRenderItemText(System.Windows.Forms.ToolStripItemTextRenderEventArgs e) {
+                e.TextColor = d ? System.Drawing.Color.FromArgb(240, 240, 240) : System.Drawing.Color.FromArgb(25, 25, 25);
+                base.OnRenderItemText(e);
+            }
+            protected override void OnRenderMenuItemBackground(System.Windows.Forms.ToolStripItemRenderEventArgs e) {
+                if (!e.Item.Selected || !e.Item.Enabled) return;
+                var r = new System.Drawing.Rectangle(4, 1, e.Item.Width - 8, e.Item.Height - 2);
+                using (var path = new System.Drawing.Drawing2D.GraphicsPath()) {
+                    int rad = 8;
+                    path.AddArc(r.X, r.Y, rad, rad, 180, 90);
+                    path.AddArc(r.Right - rad, r.Y, rad, rad, 270, 90);
+                    path.AddArc(r.Right - rad, r.Bottom - rad, rad, rad, 0, 90);
+                    path.AddArc(r.X, r.Bottom - rad, rad, rad, 90, 90);
+                    path.CloseFigure();
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    using (var b = new System.Drawing.SolidBrush(d ? System.Drawing.Color.FromArgb(61, 61, 61) : System.Drawing.Color.FromArgb(234, 234, 234)))
+                        e.Graphics.FillPath(b, path);
+                }
+            }
+        }
 
         public static Style CreateButtonStyle(bool isPrimary = false) {
             var style = new Style(typeof(Button));
@@ -943,7 +1205,7 @@ namespace OmniDictApp {
                 Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
                 BorderThickness=new Thickness(1), MaxHeight=200};
-            var lbItemStyle = new Style(typeof(ListBoxItem));
+            var lbItemStyle = new Style(typeof(ListBoxItem), Win11Theme.ListItemBase());
             lbItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgSurface)));
             lbItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty, new SolidColorBrush(Win11Theme.FgPrimary)));
             lbItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty, new Thickness(10, 6, 10, 6)));
@@ -1150,7 +1412,7 @@ namespace OmniDictApp {
                 Foreground=new SolidColorBrush(Win11Theme.FgPrimary),
                 BorderBrush=new SolidColorBrush(Win11Theme.BorderStrong),
                 BorderThickness=new Thickness(1), MaxHeight=200};
-            var pItemStyle = new Style(typeof(ListBoxItem));
+            var pItemStyle = new Style(typeof(ListBoxItem), Win11Theme.ListItemBase());
             pItemStyle.Setters.Add(new Setter(ListBoxItem.BackgroundProperty, new SolidColorBrush(Win11Theme.BgSurface)));
             pItemStyle.Setters.Add(new Setter(ListBoxItem.ForegroundProperty, new SolidColorBrush(Win11Theme.FgPrimary)));
             pItemStyle.Setters.Add(new Setter(ListBoxItem.PaddingProperty, new Thickness(10, 6, 10, 6)));
@@ -1556,6 +1818,7 @@ namespace OmniDictApp {
             var m4=new System.Windows.Forms.ToolStripMenuItem("退出");
             m4.Click+=(s,e)=>{isRealExit=true;this.Close();System.Windows.Application.Current.Shutdown();};
             menu.Items.AddRange(new System.Windows.Forms.ToolStripItem[]{m1,m2,m3,new System.Windows.Forms.ToolStripSeparator(),m4});
+            Win11Theme.StyleTrayMenu(menu);
             trayIcon.ContextMenuStrip=menu;
         }
 
