@@ -34,6 +34,8 @@ namespace OmniDictApp {
                 using(var _sw2=new System.IO.StreamWriter(_fs2,System.Text.Encoding.UTF8))
                     _sw2.Write(System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [INFO ] App.Main start\n");}catch{}
             AppDomain.CurrentDomain.UnhandledException+=(s,e)=>{try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+e.ExceptionObject+"\n",System.Text.Encoding.UTF8);}catch{}};
+            // csc-built .NET 4.x apps without an app.config may default to legacy TLS; make sure TLS 1.2 is enabled.
+            try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch {}
             try { new App().Run(new MainWindow()); }
             catch(Exception ex){try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+ex.ToString()+"\n",System.Text.Encoding.UTF8);}catch{}}
         }
@@ -164,6 +166,76 @@ namespace OmniDictApp {
         private static readonly string OldConfigPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameDict", "gamedict.toml");
 
+        // Escape a value for a TOML basic string.
+        public static string Esc(string v) {
+            if (v == null) return "";
+            var sb = new StringBuilder(v.Length + 8);
+            foreach (char c in v) {
+                switch (c) {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': break;
+                    case '\t': sb.Append("\\t"); break;
+                    default: sb.Append(c); break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        // Reverse of Esc; processes escapes left to right so "\\n" stays a literal backslash + n.
+        public static string Unesc(string v) {
+            if (string.IsNullOrEmpty(v) || v.IndexOf('\\') < 0) return v;
+            var sb = new StringBuilder(v.Length);
+            for (int i = 0; i < v.Length; i++) {
+                char c = v[i];
+                if (c == '\\' && i + 1 < v.Length) {
+                    char n = v[++i];
+                    if (n == 'n') sb.Append('\n');
+                    else if (n == 't') sb.Append('\t');
+                    else if (n == '"') sb.Append('"');
+                    else if (n == '\\') sb.Append('\\');
+                    else { sb.Append('\\'); sb.Append(n); }
+                } else sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // Extract the quoted value of a `key = "..."` line (handles escaped quotes).
+        private static string Quoted(string t) {
+            int q1 = t.IndexOf('"'); int q2 = t.LastIndexOf('"');
+            if (q1 < 0 || q2 <= q1) return null;
+            return Unesc(t.Substring(q1 + 1, q2 - q1 - 1));
+        }
+
+        private static bool IsKey(string t, string key) {
+            if (!t.StartsWith(key)) return false;
+            string rest = t.Substring(key.Length).TrimStart();
+            return rest.StartsWith("=");
+        }
+
+        // API key is encrypted with Windows DPAPI (current user scope) before being written to disk.
+        private static readonly byte[] KeyEntropy = Encoding.UTF8.GetBytes("OmniDict.api_key.v1");
+
+        public static string ProtectKey(string plain) {
+            if (string.IsNullOrEmpty(plain)) return "";
+            byte[] enc = System.Security.Cryptography.ProtectedData.Protect(
+                Encoding.UTF8.GetBytes(plain), KeyEntropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(enc);
+        }
+
+        public static string UnprotectKey(string b64) {
+            if (string.IsNullOrEmpty(b64)) return "";
+            try {
+                byte[] dec = System.Security.Cryptography.ProtectedData.Unprotect(
+                    Convert.FromBase64String(b64), KeyEntropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(dec);
+            } catch (Exception ex) {
+                Logger.Error("OmniDictConfig.UnprotectKey", ex);
+                return null;
+            }
+        }
+
         public static List<PromptPreset> GetDefaultPresets() {
             var list = new List<PromptPreset>();
             list.Add(new PromptPreset("游戏本地化与攻略私教",
@@ -212,14 +284,16 @@ namespace OmniDictApp {
                 string currentPName = null;
                 var currentPContent = new StringBuilder();
                 bool readingPreset = false;
+                bool legacyPlainKey = false;
 
                 foreach (string line in File.ReadAllLines(loadPath, Encoding.UTF8)) {
-                    string t = line.Trim(); int q1, q2;
-                    if (t.StartsWith("api_base")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) apiBase = t.Substring(q1 + 1, q2 - q1 - 1); }
-                    else if (t.StartsWith("api_key")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) apiKey = t.Substring(q1 + 1, q2 - q1 - 1); }
-                    else if (t.StartsWith("model")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) model = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    string t = line.Trim();
+                    if (IsKey(t, "api_base")) { apiBase = Quoted(t); }
+                    else if (IsKey(t, "api_key_dpapi")) { string k = UnprotectKey(Quoted(t)); if (k != null) apiKey = k; }
+                    else if (IsKey(t, "api_key")) { if (apiKey == null) { apiKey = Quoted(t); legacyPlainKey = !string.IsNullOrEmpty(apiKey); } }
+                    else if (IsKey(t, "model")) { model = Quoted(t); }
                     else if (t.StartsWith("use_vision")) { useVision = t.Contains("true") ? "true" : null; }
-                    else if (t.StartsWith("current_preset")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) currentPresetName = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    else if (IsKey(t, "current_preset")) { currentPresetName = Quoted(t); }
                     else if (t.StartsWith("float_x=") || t.StartsWith("float_x ")) { double.TryParse(t.Split('=')[1].Trim(), out floatX); }
                     else if (t.StartsWith("float_y=") || t.StartsWith("float_y ")) { double.TryParse(t.Split('=')[1].Trim(), out floatY); }
                     else if (t.StartsWith("[[presets]]")) {
@@ -230,15 +304,12 @@ namespace OmniDictApp {
                         currentPName = null;
                         currentPContent.Clear();
                     } else if (readingPreset) {
-                        if (t.StartsWith("name")) {
-                            q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"');
-                            if (q1 >= 0 && q2 > q1) currentPName = t.Substring(q1 + 1, q2 - q1 - 1);
-                        } else if (t.StartsWith("content")) {
-                            q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"');
-                            if (q1 >= 0 && q2 > q1) {
-                                string c = t.Substring(q1 + 1, q2 - q1 - 1).Replace("\\n", "\n").Replace("\\\"", "\"").Replace("\\\\", "\\");
-                                currentPContent.Append(c);
-                            }
+                        if (IsKey(t, "name")) {
+                            string n = Quoted(t);
+                            if (n != null) currentPName = n;
+                        } else if (IsKey(t, "content")) {
+                            string c = Quoted(t);
+                            if (c != null) currentPContent.Append(c);
                         }
                     }
                 }
@@ -251,6 +322,11 @@ namespace OmniDictApp {
                 }
                 if (string.IsNullOrEmpty(currentPresetName) && presets.Count > 0) {
                     currentPresetName = presets[0].Name;
+                }
+                if (legacyPlainKey) {
+                    // Migrate an older plaintext api_key to the DPAPI-encrypted form.
+                    Save(apiBase, apiKey, model, useVision == "true", floatX, floatY, currentPresetName, presets);
+                    Logger.Info("Migrated plaintext api_key to api_key_dpapi");
                 }
                 return true;
             } catch (Exception ex) {
@@ -267,11 +343,11 @@ namespace OmniDictApp {
                 sb.AppendLine("# OmniDict AI configuration");
                 sb.AppendLine("# Generated by OmniDict AI - do not edit while app is running");
                 sb.AppendLine();
-                sb.AppendLine("api_base       = \"" + (apiBase ?? "") + "\"");
-                sb.AppendLine("api_key        = \"" + (apiKey ?? "") + "\"");
-                sb.AppendLine("model          = \"" + (model ?? "") + "\"");
+                sb.AppendLine("api_base       = \"" + Esc(apiBase) + "\"");
+                sb.AppendLine("api_key_dpapi  = \"" + ProtectKey(apiKey) + "\"");
+                sb.AppendLine("model          = \"" + Esc(model) + "\"");
                 sb.AppendLine("use_vision     = " + (useVision ? "true" : "false"));
-                sb.AppendLine("current_preset = \"" + (currentPresetName ?? "") + "\"");
+                sb.AppendLine("current_preset = \"" + Esc(currentPresetName) + "\"");
                 if (floatX >= 0 && floatY >= 0) {
                     sb.AppendLine("float_x        = " + ((int)floatX));
                     sb.AppendLine("float_y        = " + ((int)floatY));
@@ -280,9 +356,8 @@ namespace OmniDictApp {
                 if (presets != null) {
                     foreach (var p in presets) {
                         sb.AppendLine("[[presets]]");
-                        sb.AppendLine("name    = \"" + (p.Name ?? "").Replace("\"", "\\\"") + "\"");
-                        string esc = (p.Content ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r\n", "\\n").Replace("\n", "\\n");
-                        sb.AppendLine("content = \"" + esc + "\"");
+                        sb.AppendLine("name    = \"" + Esc(p.Name) + "\"");
+                        sb.AppendLine("content = \"" + Esc(p.Content) + "\"");
                         sb.AppendLine();
                     }
                 }
@@ -463,6 +538,7 @@ namespace OmniDictApp {
             LoadOmniConfig(); Logger.Info("Config model="+currentModel+" preset="+currentPresetName);
             InitUI(); InitTray();
             floatingWin=new FloatingResultWindow();
+            floatingWin.FollowUp += q => AskFollowUp(floatingWin, q);
             string _b,_k,_m,_v,_pn; double _fx,_fy; List<PromptPreset> _ps;
             if(OmniDictConfig.Load(out _b,out _k,out _m,out _v,out _fx,out _fy,out _pn,out _ps)){
                 if(_fx>=0&&_fy>=0){floatingWin.LastX=_fx;floatingWin.LastY=_fy;floatingWin.HasCustomPosition=true;}
@@ -1553,36 +1629,62 @@ namespace OmniDictApp {
             });
         }
 
+        // Conversation of the current floating-window session (JSON message objects), used for follow-up questions.
+        private List<string> convMessages = new List<string>();
+        private int convGen = 0;
+        private readonly object convLock = new object();
+
+        private static string J(string v) {
+            if (v == null) return "";
+            var sb = new StringBuilder(v.Length + 16);
+            foreach (char c in v) {
+                switch (c) {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        private string BuildChatBody(List<string> messages) {
+            return "{\"model\":\""+J(currentModel)+"\",\"messages\":["+string.Join(",",messages.ToArray())+"]}";
+        }
+
         private void AnalyzeImageForFloating(FloatingResultWindow fw,byte[] imgBytes) {
             bool vis=useVision;
             string sysPmtRaw = GetActiveSystemPrompt();
-            string sysPmt = sysPmtRaw.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r\n","\\n").Replace("\n","\\n");
+            int gen;
+            lock(convLock){ gen=++convGen; convMessages=new List<string>(); }
             Task.Run(()=>{
                 try{
-                    string body;
+                    var msgs=new List<string>();
+                    msgs.Add("{\"role\":\"system\",\"content\":\""+J(sysPmtRaw)+"\"}");
                     if(vis){
                         string b64=Convert.ToBase64String(imgBytes);
                         string up="请识别并深度解析截图中出现的文字与界面内容：";
-                        body="{\"model\":\""+currentModel+"\",\"messages\":["+
-                            "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
-                            "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+up+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}}]}"+
-                            "]}";
+                        msgs.Add("{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+J(up)+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}}]}");
                     } else {
                         string ocrText=OcrHelper.ExtractText(imgBytes);
                         Logger.Info("OCR len="+ocrText.Length);
                         if(string.IsNullOrWhiteSpace(ocrText))ocrText="[OCR未识别到文字]";
-                        string esc=ocrText.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\n","\\n").Replace("\r","");
-                        string up="截图中提取到的文字内容：\\n"+esc+"\\n\\n请分析并提供精准翻译与内容深度拆解。";
-                        body="{\"model\":\""+currentModel+"\",\"messages\":["+
-                            "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
-                            "{\"role\":\"user\",\"content\":\""+up+"\"}]"+
-                            "}";
+                        string up="截图中提取到的文字内容：\n"+ocrText+"\n\n请分析并提供精准翻译与内容深度拆解。";
+                        msgs.Add("{\"role\":\"user\",\"content\":\""+J(up)+"\"}");
                     }
-                    string result=PostAI(body);
+                    string result=PostAI(BuildChatBody(msgs));
                     Logger.Info("AI chars="+result.Length);
+                    msgs.Add("{\"role\":\"assistant\",\"content\":\""+J(result)+"\"}");
+                    lock(convLock){ if(gen!=convGen) return; convMessages=msgs; }
                     byte[] _ib3=imgBytes;string _r3=result;this.Dispatcher.Invoke(()=>{fw.ShowResult(_r3);AddHistory("截图","[屏幕解析]",_r3,_ib3);});
                 }catch(Exception ex){
                     Logger.Error("AnalyzeFloating",ex);
+                    lock(convLock){ if(gen!=convGen) return; }
                     byte[] retryBytes = imgBytes;
                     this.Dispatcher.Invoke(()=>{
                         string msg = "解析失败: " + ex.Message;
@@ -1594,6 +1696,31 @@ namespace OmniDictApp {
                             AnalyzeImageForFloating(fw, retryBytes);
                         });
                     });
+                }
+            });
+        }
+
+        private void AskFollowUp(FloatingResultWindow fw, string question) {
+            if (string.IsNullOrWhiteSpace(question)) return;
+            List<string> msgs; int gen;
+            lock(convLock){
+                if(convMessages.Count==0) return;
+                msgs=new List<string>(convMessages); gen=convGen;
+            }
+            msgs.Add("{\"role\":\"user\",\"content\":\""+J(question)+"\"}");
+            fw.ShowFollowUpPending(question);
+            Task.Run(()=>{
+                try{
+                    string result=PostAI(BuildChatBody(msgs));
+                    msgs.Add("{\"role\":\"assistant\",\"content\":\""+J(result)+"\"}");
+                    lock(convLock){ if(gen!=convGen) return; convMessages=msgs; }
+                    string _q=question,_r=result;
+                    this.Dispatcher.Invoke(()=>{fw.AppendFollowUpAnswer(_r);AddHistory("追问",_q,_r);});
+                }catch(Exception ex){
+                    Logger.Error("FollowUp",ex);
+                    lock(convLock){ if(gen!=convGen) return; }
+                    string m=ex.Message;
+                    this.Dispatcher.Invoke(()=>fw.FollowUpFailed("追问失败: "+m));
                 }
             });
         }
@@ -1820,6 +1947,14 @@ namespace OmniDictApp {
         private Button close;
         private Border altWTag;
         private TextBlock altWText;
+        private Button copyBtn;
+        private Border askBar;
+        private TextBox askBox;
+        private Button askBtn;
+        private string transcript = "";
+        private IntPtr hwnd = IntPtr.Zero;
+        // Raised when the user submits a follow-up question.
+        public event Action<string> FollowUp;
         public double LastX = -1;
         public double LastY = -1;
         public bool HasCustomPosition = false;
@@ -1838,9 +1973,8 @@ namespace OmniDictApp {
             this.Focusable = false;
             this.SizeToContent = SizeToContent.WidthAndHeight;
             this.SourceInitialized += (s, e) => {
-                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
-                SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
+                hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                SetNoActivate(true);
             };
 
             root = new Border {
@@ -1896,6 +2030,14 @@ namespace OmniDictApp {
 
             StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
 
+            copyBtn = new Button {
+                Content = "复制", Height = 24, Padding = new Thickness(8, 0, 8, 0),
+                Margin = new Thickness(0, 0, 8, 0), BorderThickness = new Thickness(0),
+                FontSize = 11.5, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "复制选中内容；未选中时复制全部" };
+            copyBtn.Click += (s, e) => CopyContent();
+            rightControls.Children.Add(copyBtn);
+
             altWTag = new Border {
                 CornerRadius = new CornerRadius(4),
                 BorderThickness = new Thickness(1), Padding = new Thickness(6, 2, 6, 2),
@@ -1927,6 +2069,27 @@ namespace OmniDictApp {
             ScrollViewer.SetHorizontalScrollBarVisibility(contentBox, ScrollBarVisibility.Disabled);
             cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6, 8, 6) };
             cc.Child = contentBox; Grid.SetRow(cc, 1); g.Children.Add(cc);
+            // Clicking into the text makes the window focusable so selection + Ctrl+C work.
+            contentBox.PreviewMouseLeftButtonDown += (s, e) => EnableInput();
+
+            // Follow-up bar
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            askBar = new Border { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(6, 4, 4, 4), Visibility = Visibility.Collapsed };
+            DockPanel ad = new DockPanel { LastChildFill = true };
+            askBtn = new Button { Content = "追问", Height = 28, Padding = new Thickness(12, 0, 12, 0),
+                Margin = new Thickness(6, 0, 0, 0), Cursor = Cursors.Hand };
+            askBtn.Style = Win11Theme.CreateButtonStyle(true);
+            askBtn.Click += (s, e) => SubmitFollowUp();
+            DockPanel.SetDock(askBtn, Dock.Right); ad.Children.Add(askBtn);
+            askBox = new TextBox { BorderThickness = new Thickness(0), Background = Brushes.Transparent,
+                FontSize = 13, VerticalContentAlignment = VerticalAlignment.Center, MinHeight = 28,
+                TextWrapping = TextWrapping.Wrap, MaxHeight = 90, AcceptsReturn = false,
+                ToolTip = "输入追问后按 Enter 发送" };
+            askBox.PreviewMouseLeftButtonDown += (s, e) => { EnableInput(); askBox.Focus(); };
+            askBox.KeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; SubmitFollowUp(); } };
+            ad.Children.Add(askBox);
+            askBar.Child = ad; Grid.SetRow(askBar, 2); g.Children.Add(askBar);
 
             root.Child = g; this.Content = root;
             this.KeyDown += (s, e) => { if (e.Key == Key.Escape) this.Hide(); };
@@ -1947,12 +2110,76 @@ namespace OmniDictApp {
 
             previewBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
             contentBox.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 235) : Color.FromRgb(25, 25, 30));
+            copyBtn.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
+            copyBtn.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(210, 210, 225) : Color.FromRgb(50, 50, 60));
+            askBar.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(18, 0, 0, 0));
+            askBar.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(40, 0, 0, 0));
+            askBox.Foreground = contentBox.Foreground;
+            askBox.CaretBrush = contentBox.Foreground;
 
             if (altWTag != null) {
                 altWTag.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 0, 103, 192) : Color.FromArgb(25, 0, 103, 192));
                 altWTag.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(90, 0, 103, 192) : Color.FromArgb(70, 0, 103, 192));
                 altWText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(140, 180, 240) : Color.FromRgb(0, 90, 180));
             }
+        }
+
+        private void SetNoActivate(bool on) {
+            if (hwnd == IntPtr.Zero) return;
+            int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+            SetWindowLong(hwnd, GWL_EXSTYLE, on ? (ex | WS_EX_NOACTIVATE) : (ex & ~WS_EX_NOACTIVATE));
+        }
+
+        // Called when the user clicks into the window: allow it to take keyboard focus.
+        private void EnableInput() {
+            SetNoActivate(false);
+            this.Focusable = true;
+            if (!this.IsActive) this.Activate();
+        }
+
+        private void CopyContent() {
+            string text = null;
+            try { if (!contentBox.Selection.IsEmpty) text = contentBox.Selection.Text; } catch {}
+            if (string.IsNullOrEmpty(text)) text = transcript;
+            if (string.IsNullOrEmpty(text)) return;
+            try {
+                Clipboard.SetText(text);
+                copyBtn.Content = "已复制";
+                var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+                t.Tick += (s, e) => { t.Stop(); copyBtn.Content = "复制"; };
+                t.Start();
+            } catch (Exception ex) { Logger.Error("CopyContent", ex); }
+        }
+
+        private void SubmitFollowUp() {
+            string q = askBox.Text == null ? "" : askBox.Text.Trim();
+            if (q.Length == 0 || !askBox.IsEnabled) return;
+            askBox.Text = "";
+            var h = FollowUp;
+            if (h != null) h(q);
+        }
+
+        public void ShowFollowUpPending(string question) {
+            transcript += "\n\n---\n## 追问：" + question.Replace("\r", " ").Replace("\n", " ") + "\n";
+            askBox.IsEnabled = false; askBtn.IsEnabled = false;
+            SetRichText(transcript + "\n⌛ 正在思考...");
+            contentBox.ScrollToEnd();
+        }
+
+        public void AppendFollowUpAnswer(string answer) {
+            transcript += answer;
+            AdaptSizeToContent(transcript);
+            SetRichText(transcript);
+            askBox.IsEnabled = true; askBtn.IsEnabled = true;
+            contentBox.ScrollToEnd();
+            askBox.Focus();
+        }
+
+        public void FollowUpFailed(string msg) {
+            transcript += "⚠ " + msg;
+            SetRichText(transcript);
+            askBox.IsEnabled = true; askBtn.IsEnabled = true;
+            contentBox.ScrollToEnd();
         }
 
         private double GetPreferredHeight() {
@@ -1968,6 +2195,11 @@ namespace OmniDictApp {
 
         public void ShowLoading(double cursorX, double cursorY, byte[] imgBytes) {
             this.WindowState = WindowState.Normal;
+            // New capture: go back to not stealing focus from the game/IDE.
+            SetNoActivate(true);
+            transcript = "";
+            askBox.Text = ""; askBox.IsEnabled = true; askBtn.IsEnabled = true;
+            askBar.Visibility = Visibility.Collapsed;
             if (cursorX >= 0 && cursorY >= 0) {
                 lastOriginX = cursorX;
                 lastOriginY = cursorY;
@@ -2015,6 +2247,8 @@ namespace OmniDictApp {
         }
 
         public void ShowResult(string text) {
+            transcript = text ?? "";
+            askBar.Visibility = Visibility.Visible;
             AdaptSizeToContent(text);
             SetRichText(text);
         }
@@ -2046,6 +2280,7 @@ namespace OmniDictApp {
         }
 
         public void ShowError(string errorMsg, Action onRetry) {
+            askBar.Visibility = Visibility.Collapsed;
             bool isDark = Win11Theme.IsDarkTheme;
             var doc = new System.Windows.Documents.FlowDocument();
             doc.PagePadding = new Thickness(0);
