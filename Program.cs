@@ -1947,7 +1947,6 @@ namespace OmniDictApp {
         private Button close;
         private Border altWTag;
         private TextBlock altWText;
-        private Button copyBtn;
         private Border askBar;
         private TextBox askBox;
         private Button askBtn;
@@ -2030,14 +2029,6 @@ namespace OmniDictApp {
 
             StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
 
-            copyBtn = new Button {
-                Content = "复制", Height = 24, Padding = new Thickness(8, 0, 8, 0),
-                Margin = new Thickness(0, 0, 8, 0), BorderThickness = new Thickness(0),
-                FontSize = 11.5, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "复制选中内容；未选中时复制全部" };
-            copyBtn.Click += (s, e) => CopyContent();
-            rightControls.Children.Add(copyBtn);
-
             altWTag = new Border {
                 CornerRadius = new CornerRadius(4),
                 BorderThickness = new Thickness(1), Padding = new Thickness(6, 2, 6, 2),
@@ -2077,7 +2068,7 @@ namespace OmniDictApp {
             askBar = new Border { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(6, 4, 4, 4), Visibility = Visibility.Collapsed };
             DockPanel ad = new DockPanel { LastChildFill = true };
-            askBtn = new Button { Content = "追问", Height = 28, Padding = new Thickness(12, 0, 12, 0),
+            askBtn = new Button { Content = "发送", Height = 28, Padding = new Thickness(12, 0, 12, 0),
                 Margin = new Thickness(6, 0, 0, 0), Cursor = Cursors.Hand };
             askBtn.Style = Win11Theme.CreateButtonStyle(true);
             askBtn.Click += (s, e) => SubmitFollowUp();
@@ -2110,8 +2101,6 @@ namespace OmniDictApp {
 
             previewBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
             contentBox.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 235) : Color.FromRgb(25, 25, 30));
-            copyBtn.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
-            copyBtn.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(210, 210, 225) : Color.FromRgb(50, 50, 60));
             askBar.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(18, 0, 0, 0));
             askBar.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(40, 0, 0, 0));
             askBox.Foreground = contentBox.Foreground;
@@ -2137,20 +2126,6 @@ namespace OmniDictApp {
             if (!this.IsActive) this.Activate();
         }
 
-        private void CopyContent() {
-            string text = null;
-            try { if (!contentBox.Selection.IsEmpty) text = contentBox.Selection.Text; } catch {}
-            if (string.IsNullOrEmpty(text)) text = transcript;
-            if (string.IsNullOrEmpty(text)) return;
-            try {
-                Clipboard.SetText(text);
-                copyBtn.Content = "已复制";
-                var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
-                t.Tick += (s, e) => { t.Stop(); copyBtn.Content = "复制"; };
-                t.Start();
-            } catch (Exception ex) { Logger.Error("CopyContent", ex); }
-        }
-
         private void SubmitFollowUp() {
             string q = askBox.Text == null ? "" : askBox.Text.Trim();
             if (q.Length == 0 || !askBox.IsEnabled) return;
@@ -2162,13 +2137,14 @@ namespace OmniDictApp {
         public void ShowFollowUpPending(string question) {
             transcript += "\n\n---\n## 追问：" + question.Replace("\r", " ").Replace("\n", " ") + "\n";
             askBox.IsEnabled = false; askBtn.IsEnabled = false;
+            // Keep the window size fixed from here on; new content scrolls inside the text area.
+            if (contentBox.ActualHeight > 0) contentBox.Height = contentBox.ActualHeight;
             SetRichText(transcript + "\n⌛ 正在思考...");
             contentBox.ScrollToEnd();
         }
 
         public void AppendFollowUpAnswer(string answer) {
             transcript += answer;
-            AdaptSizeToContent(transcript);
             SetRichText(transcript);
             askBox.IsEnabled = true; askBtn.IsEnabled = true;
             contentBox.ScrollToEnd();
