@@ -538,6 +538,7 @@ namespace OmniDictApp {
             LoadOmniConfig(); Logger.Info("Config model="+currentModel+" preset="+currentPresetName);
             InitUI(); InitTray();
             floatingWin=new FloatingResultWindow();
+            floatingWin.FollowUp += q => AskFollowUp(floatingWin, q);
             string _b,_k,_m,_v,_pn; double _fx,_fy; List<PromptPreset> _ps;
             if(OmniDictConfig.Load(out _b,out _k,out _m,out _v,out _fx,out _fy,out _pn,out _ps)){
                 if(_fx>=0&&_fy>=0){floatingWin.LastX=_fx;floatingWin.LastY=_fy;floatingWin.HasCustomPosition=true;}
@@ -1628,36 +1629,62 @@ namespace OmniDictApp {
             });
         }
 
+        // Conversation of the current floating-window session (JSON message objects), used for follow-up questions.
+        private List<string> convMessages = new List<string>();
+        private int convGen = 0;
+        private readonly object convLock = new object();
+
+        private static string J(string v) {
+            if (v == null) return "";
+            var sb = new StringBuilder(v.Length + 16);
+            foreach (char c in v) {
+                switch (c) {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        private string BuildChatBody(List<string> messages) {
+            return "{\"model\":\""+J(currentModel)+"\",\"messages\":["+string.Join(",",messages.ToArray())+"]}";
+        }
+
         private void AnalyzeImageForFloating(FloatingResultWindow fw,byte[] imgBytes) {
             bool vis=useVision;
             string sysPmtRaw = GetActiveSystemPrompt();
-            string sysPmt = sysPmtRaw.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r\n","\\n").Replace("\n","\\n");
+            int gen;
+            lock(convLock){ gen=++convGen; convMessages=new List<string>(); }
             Task.Run(()=>{
                 try{
-                    string body;
+                    var msgs=new List<string>();
+                    msgs.Add("{\"role\":\"system\",\"content\":\""+J(sysPmtRaw)+"\"}");
                     if(vis){
                         string b64=Convert.ToBase64String(imgBytes);
                         string up="请识别并深度解析截图中出现的文字与界面内容：";
-                        body="{\"model\":\""+currentModel+"\",\"messages\":["+
-                            "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
-                            "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+up+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}}]}"+
-                            "]}";
+                        msgs.Add("{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\""+J(up)+"\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,"+b64+"\"}}]}");
                     } else {
                         string ocrText=OcrHelper.ExtractText(imgBytes);
                         Logger.Info("OCR len="+ocrText.Length);
                         if(string.IsNullOrWhiteSpace(ocrText))ocrText="[OCR未识别到文字]";
-                        string esc=ocrText.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\n","\\n").Replace("\r","");
-                        string up="截图中提取到的文字内容：\\n"+esc+"\\n\\n请分析并提供精准翻译与内容深度拆解。";
-                        body="{\"model\":\""+currentModel+"\",\"messages\":["+
-                            "{\"role\":\"system\",\"content\":\""+sysPmt+"\"},"+
-                            "{\"role\":\"user\",\"content\":\""+up+"\"}]"+
-                            "}";
+                        string up="截图中提取到的文字内容：\n"+ocrText+"\n\n请分析并提供精准翻译与内容深度拆解。";
+                        msgs.Add("{\"role\":\"user\",\"content\":\""+J(up)+"\"}");
                     }
-                    string result=PostAI(body);
+                    string result=PostAI(BuildChatBody(msgs));
                     Logger.Info("AI chars="+result.Length);
+                    msgs.Add("{\"role\":\"assistant\",\"content\":\""+J(result)+"\"}");
+                    lock(convLock){ if(gen!=convGen) return; convMessages=msgs; }
                     byte[] _ib3=imgBytes;string _r3=result;this.Dispatcher.Invoke(()=>{fw.ShowResult(_r3);AddHistory("截图","[屏幕解析]",_r3,_ib3);});
                 }catch(Exception ex){
                     Logger.Error("AnalyzeFloating",ex);
+                    lock(convLock){ if(gen!=convGen) return; }
                     byte[] retryBytes = imgBytes;
                     this.Dispatcher.Invoke(()=>{
                         string msg = "解析失败: " + ex.Message;
@@ -1669,6 +1696,31 @@ namespace OmniDictApp {
                             AnalyzeImageForFloating(fw, retryBytes);
                         });
                     });
+                }
+            });
+        }
+
+        private void AskFollowUp(FloatingResultWindow fw, string question) {
+            if (string.IsNullOrWhiteSpace(question)) return;
+            List<string> msgs; int gen;
+            lock(convLock){
+                if(convMessages.Count==0) return;
+                msgs=new List<string>(convMessages); gen=convGen;
+            }
+            msgs.Add("{\"role\":\"user\",\"content\":\""+J(question)+"\"}");
+            fw.ShowFollowUpPending(question);
+            Task.Run(()=>{
+                try{
+                    string result=PostAI(BuildChatBody(msgs));
+                    msgs.Add("{\"role\":\"assistant\",\"content\":\""+J(result)+"\"}");
+                    lock(convLock){ if(gen!=convGen) return; convMessages=msgs; }
+                    string _q=question,_r=result;
+                    this.Dispatcher.Invoke(()=>{fw.AppendFollowUpAnswer(_r);AddHistory("追问",_q,_r);});
+                }catch(Exception ex){
+                    Logger.Error("FollowUp",ex);
+                    lock(convLock){ if(gen!=convGen) return; }
+                    string m=ex.Message;
+                    this.Dispatcher.Invoke(()=>fw.FollowUpFailed("追问失败: "+m));
                 }
             });
         }
@@ -1895,6 +1947,14 @@ namespace OmniDictApp {
         private Button close;
         private Border altWTag;
         private TextBlock altWText;
+        private Button copyBtn;
+        private Border askBar;
+        private TextBox askBox;
+        private Button askBtn;
+        private string transcript = "";
+        private IntPtr hwnd = IntPtr.Zero;
+        // Raised when the user submits a follow-up question.
+        public event Action<string> FollowUp;
         public double LastX = -1;
         public double LastY = -1;
         public bool HasCustomPosition = false;
@@ -1913,9 +1973,8 @@ namespace OmniDictApp {
             this.Focusable = false;
             this.SizeToContent = SizeToContent.WidthAndHeight;
             this.SourceInitialized += (s, e) => {
-                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                int exStyle = GetWindowLong(handle, GWL_EXSTYLE);
-                SetWindowLong(handle, GWL_EXSTYLE, exStyle | WS_EX_NOACTIVATE);
+                hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                SetNoActivate(true);
             };
 
             root = new Border {
@@ -1971,6 +2030,14 @@ namespace OmniDictApp {
 
             StackPanel rightControls = new StackPanel { Orientation = Orientation.Horizontal };
 
+            copyBtn = new Button {
+                Content = "复制", Height = 24, Padding = new Thickness(8, 0, 8, 0),
+                Margin = new Thickness(0, 0, 8, 0), BorderThickness = new Thickness(0),
+                FontSize = 11.5, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "复制选中内容；未选中时复制全部" };
+            copyBtn.Click += (s, e) => CopyContent();
+            rightControls.Children.Add(copyBtn);
+
             altWTag = new Border {
                 CornerRadius = new CornerRadius(4),
                 BorderThickness = new Thickness(1), Padding = new Thickness(6, 2, 6, 2),
@@ -2002,6 +2069,27 @@ namespace OmniDictApp {
             ScrollViewer.SetHorizontalScrollBarVisibility(contentBox, ScrollBarVisibility.Disabled);
             cc = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6, 8, 6) };
             cc.Child = contentBox; Grid.SetRow(cc, 1); g.Children.Add(cc);
+            // Clicking into the text makes the window focusable so selection + Ctrl+C work.
+            contentBox.PreviewMouseLeftButtonDown += (s, e) => EnableInput();
+
+            // Follow-up bar
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            askBar = new Border { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 8, 0, 0), Padding = new Thickness(6, 4, 4, 4), Visibility = Visibility.Collapsed };
+            DockPanel ad = new DockPanel { LastChildFill = true };
+            askBtn = new Button { Content = "追问", Height = 28, Padding = new Thickness(12, 0, 12, 0),
+                Margin = new Thickness(6, 0, 0, 0), Cursor = Cursors.Hand };
+            askBtn.Style = Win11Theme.CreateButtonStyle(true);
+            askBtn.Click += (s, e) => SubmitFollowUp();
+            DockPanel.SetDock(askBtn, Dock.Right); ad.Children.Add(askBtn);
+            askBox = new TextBox { BorderThickness = new Thickness(0), Background = Brushes.Transparent,
+                FontSize = 13, VerticalContentAlignment = VerticalAlignment.Center, MinHeight = 28,
+                TextWrapping = TextWrapping.Wrap, MaxHeight = 90, AcceptsReturn = false,
+                ToolTip = "输入追问后按 Enter 发送" };
+            askBox.PreviewMouseLeftButtonDown += (s, e) => { EnableInput(); askBox.Focus(); };
+            askBox.KeyDown += (s, e) => { if (e.Key == Key.Enter) { e.Handled = true; SubmitFollowUp(); } };
+            ad.Children.Add(askBox);
+            askBar.Child = ad; Grid.SetRow(askBar, 2); g.Children.Add(askBar);
 
             root.Child = g; this.Content = root;
             this.KeyDown += (s, e) => { if (e.Key == Key.Escape) this.Hide(); };
@@ -2022,12 +2110,76 @@ namespace OmniDictApp {
 
             previewBorder.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(50, 0, 0, 0));
             contentBox.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(220, 220, 235) : Color.FromRgb(25, 25, 30));
+            copyBtn.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(30, 0, 0, 0));
+            copyBtn.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(210, 210, 225) : Color.FromRgb(50, 50, 60));
+            askBar.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(18, 0, 0, 0));
+            askBar.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(50, 255, 255, 255) : Color.FromArgb(40, 0, 0, 0));
+            askBox.Foreground = contentBox.Foreground;
+            askBox.CaretBrush = contentBox.Foreground;
 
             if (altWTag != null) {
                 altWTag.Background = new SolidColorBrush(isDark ? Color.FromArgb(40, 0, 103, 192) : Color.FromArgb(25, 0, 103, 192));
                 altWTag.BorderBrush = new SolidColorBrush(isDark ? Color.FromArgb(90, 0, 103, 192) : Color.FromArgb(70, 0, 103, 192));
                 altWText.Foreground = new SolidColorBrush(isDark ? Color.FromRgb(140, 180, 240) : Color.FromRgb(0, 90, 180));
             }
+        }
+
+        private void SetNoActivate(bool on) {
+            if (hwnd == IntPtr.Zero) return;
+            int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
+            SetWindowLong(hwnd, GWL_EXSTYLE, on ? (ex | WS_EX_NOACTIVATE) : (ex & ~WS_EX_NOACTIVATE));
+        }
+
+        // Called when the user clicks into the window: allow it to take keyboard focus.
+        private void EnableInput() {
+            SetNoActivate(false);
+            this.Focusable = true;
+            if (!this.IsActive) this.Activate();
+        }
+
+        private void CopyContent() {
+            string text = null;
+            try { if (!contentBox.Selection.IsEmpty) text = contentBox.Selection.Text; } catch {}
+            if (string.IsNullOrEmpty(text)) text = transcript;
+            if (string.IsNullOrEmpty(text)) return;
+            try {
+                Clipboard.SetText(text);
+                copyBtn.Content = "已复制";
+                var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+                t.Tick += (s, e) => { t.Stop(); copyBtn.Content = "复制"; };
+                t.Start();
+            } catch (Exception ex) { Logger.Error("CopyContent", ex); }
+        }
+
+        private void SubmitFollowUp() {
+            string q = askBox.Text == null ? "" : askBox.Text.Trim();
+            if (q.Length == 0 || !askBox.IsEnabled) return;
+            askBox.Text = "";
+            var h = FollowUp;
+            if (h != null) h(q);
+        }
+
+        public void ShowFollowUpPending(string question) {
+            transcript += "\n\n---\n## 追问：" + question.Replace("\r", " ").Replace("\n", " ") + "\n";
+            askBox.IsEnabled = false; askBtn.IsEnabled = false;
+            SetRichText(transcript + "\n⌛ 正在思考...");
+            contentBox.ScrollToEnd();
+        }
+
+        public void AppendFollowUpAnswer(string answer) {
+            transcript += answer;
+            AdaptSizeToContent(transcript);
+            SetRichText(transcript);
+            askBox.IsEnabled = true; askBtn.IsEnabled = true;
+            contentBox.ScrollToEnd();
+            askBox.Focus();
+        }
+
+        public void FollowUpFailed(string msg) {
+            transcript += "⚠ " + msg;
+            SetRichText(transcript);
+            askBox.IsEnabled = true; askBtn.IsEnabled = true;
+            contentBox.ScrollToEnd();
         }
 
         private double GetPreferredHeight() {
@@ -2043,6 +2195,11 @@ namespace OmniDictApp {
 
         public void ShowLoading(double cursorX, double cursorY, byte[] imgBytes) {
             this.WindowState = WindowState.Normal;
+            // New capture: go back to not stealing focus from the game/IDE.
+            SetNoActivate(true);
+            transcript = "";
+            askBox.Text = ""; askBox.IsEnabled = true; askBtn.IsEnabled = true;
+            askBar.Visibility = Visibility.Collapsed;
             if (cursorX >= 0 && cursorY >= 0) {
                 lastOriginX = cursorX;
                 lastOriginY = cursorY;
@@ -2090,6 +2247,8 @@ namespace OmniDictApp {
         }
 
         public void ShowResult(string text) {
+            transcript = text ?? "";
+            askBar.Visibility = Visibility.Visible;
             AdaptSizeToContent(text);
             SetRichText(text);
         }
@@ -2121,6 +2280,7 @@ namespace OmniDictApp {
         }
 
         public void ShowError(string errorMsg, Action onRetry) {
+            askBar.Visibility = Visibility.Collapsed;
             bool isDark = Win11Theme.IsDarkTheme;
             var doc = new System.Windows.Documents.FlowDocument();
             doc.PagePadding = new Thickness(0);
