@@ -34,6 +34,8 @@ namespace OmniDictApp {
                 using(var _sw2=new System.IO.StreamWriter(_fs2,System.Text.Encoding.UTF8))
                     _sw2.Write(System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [INFO ] App.Main start\n");}catch{}
             AppDomain.CurrentDomain.UnhandledException+=(s,e)=>{try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+e.ExceptionObject+"\n",System.Text.Encoding.UTF8);}catch{}};
+            // csc-built .NET 4.x apps without an app.config may default to legacy TLS; make sure TLS 1.2 is enabled.
+            try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch {}
             try { new App().Run(new MainWindow()); }
             catch(Exception ex){try{System.IO.File.AppendAllText(_lp,System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")+" [FATAL] "+ex.ToString()+"\n",System.Text.Encoding.UTF8);}catch{}}
         }
@@ -164,6 +166,76 @@ namespace OmniDictApp {
         private static readonly string OldConfigPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameDict", "gamedict.toml");
 
+        // Escape a value for a TOML basic string.
+        public static string Esc(string v) {
+            if (v == null) return "";
+            var sb = new StringBuilder(v.Length + 8);
+            foreach (char c in v) {
+                switch (c) {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': break;
+                    case '\t': sb.Append("\\t"); break;
+                    default: sb.Append(c); break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        // Reverse of Esc; processes escapes left to right so "\\n" stays a literal backslash + n.
+        public static string Unesc(string v) {
+            if (string.IsNullOrEmpty(v) || v.IndexOf('\\') < 0) return v;
+            var sb = new StringBuilder(v.Length);
+            for (int i = 0; i < v.Length; i++) {
+                char c = v[i];
+                if (c == '\\' && i + 1 < v.Length) {
+                    char n = v[++i];
+                    if (n == 'n') sb.Append('\n');
+                    else if (n == 't') sb.Append('\t');
+                    else if (n == '"') sb.Append('"');
+                    else if (n == '\\') sb.Append('\\');
+                    else { sb.Append('\\'); sb.Append(n); }
+                } else sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // Extract the quoted value of a `key = "..."` line (handles escaped quotes).
+        private static string Quoted(string t) {
+            int q1 = t.IndexOf('"'); int q2 = t.LastIndexOf('"');
+            if (q1 < 0 || q2 <= q1) return null;
+            return Unesc(t.Substring(q1 + 1, q2 - q1 - 1));
+        }
+
+        private static bool IsKey(string t, string key) {
+            if (!t.StartsWith(key)) return false;
+            string rest = t.Substring(key.Length).TrimStart();
+            return rest.StartsWith("=");
+        }
+
+        // API key is encrypted with Windows DPAPI (current user scope) before being written to disk.
+        private static readonly byte[] KeyEntropy = Encoding.UTF8.GetBytes("OmniDict.api_key.v1");
+
+        public static string ProtectKey(string plain) {
+            if (string.IsNullOrEmpty(plain)) return "";
+            byte[] enc = System.Security.Cryptography.ProtectedData.Protect(
+                Encoding.UTF8.GetBytes(plain), KeyEntropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(enc);
+        }
+
+        public static string UnprotectKey(string b64) {
+            if (string.IsNullOrEmpty(b64)) return "";
+            try {
+                byte[] dec = System.Security.Cryptography.ProtectedData.Unprotect(
+                    Convert.FromBase64String(b64), KeyEntropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(dec);
+            } catch (Exception ex) {
+                Logger.Error("OmniDictConfig.UnprotectKey", ex);
+                return null;
+            }
+        }
+
         public static List<PromptPreset> GetDefaultPresets() {
             var list = new List<PromptPreset>();
             list.Add(new PromptPreset("游戏本地化与攻略私教",
@@ -212,14 +284,16 @@ namespace OmniDictApp {
                 string currentPName = null;
                 var currentPContent = new StringBuilder();
                 bool readingPreset = false;
+                bool legacyPlainKey = false;
 
                 foreach (string line in File.ReadAllLines(loadPath, Encoding.UTF8)) {
-                    string t = line.Trim(); int q1, q2;
-                    if (t.StartsWith("api_base")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) apiBase = t.Substring(q1 + 1, q2 - q1 - 1); }
-                    else if (t.StartsWith("api_key")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) apiKey = t.Substring(q1 + 1, q2 - q1 - 1); }
-                    else if (t.StartsWith("model")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) model = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    string t = line.Trim();
+                    if (IsKey(t, "api_base")) { apiBase = Quoted(t); }
+                    else if (IsKey(t, "api_key_dpapi")) { string k = UnprotectKey(Quoted(t)); if (k != null) apiKey = k; }
+                    else if (IsKey(t, "api_key")) { if (apiKey == null) { apiKey = Quoted(t); legacyPlainKey = !string.IsNullOrEmpty(apiKey); } }
+                    else if (IsKey(t, "model")) { model = Quoted(t); }
                     else if (t.StartsWith("use_vision")) { useVision = t.Contains("true") ? "true" : null; }
-                    else if (t.StartsWith("current_preset")) { q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"'); if (q1 >= 0 && q2 > q1) currentPresetName = t.Substring(q1 + 1, q2 - q1 - 1); }
+                    else if (IsKey(t, "current_preset")) { currentPresetName = Quoted(t); }
                     else if (t.StartsWith("float_x=") || t.StartsWith("float_x ")) { double.TryParse(t.Split('=')[1].Trim(), out floatX); }
                     else if (t.StartsWith("float_y=") || t.StartsWith("float_y ")) { double.TryParse(t.Split('=')[1].Trim(), out floatY); }
                     else if (t.StartsWith("[[presets]]")) {
@@ -230,15 +304,12 @@ namespace OmniDictApp {
                         currentPName = null;
                         currentPContent.Clear();
                     } else if (readingPreset) {
-                        if (t.StartsWith("name")) {
-                            q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"');
-                            if (q1 >= 0 && q2 > q1) currentPName = t.Substring(q1 + 1, q2 - q1 - 1);
-                        } else if (t.StartsWith("content")) {
-                            q1 = t.IndexOf('"'); q2 = t.LastIndexOf('"');
-                            if (q1 >= 0 && q2 > q1) {
-                                string c = t.Substring(q1 + 1, q2 - q1 - 1).Replace("\\n", "\n").Replace("\\\"", "\"").Replace("\\\\", "\\");
-                                currentPContent.Append(c);
-                            }
+                        if (IsKey(t, "name")) {
+                            string n = Quoted(t);
+                            if (n != null) currentPName = n;
+                        } else if (IsKey(t, "content")) {
+                            string c = Quoted(t);
+                            if (c != null) currentPContent.Append(c);
                         }
                     }
                 }
@@ -251,6 +322,11 @@ namespace OmniDictApp {
                 }
                 if (string.IsNullOrEmpty(currentPresetName) && presets.Count > 0) {
                     currentPresetName = presets[0].Name;
+                }
+                if (legacyPlainKey) {
+                    // Migrate an older plaintext api_key to the DPAPI-encrypted form.
+                    Save(apiBase, apiKey, model, useVision == "true", floatX, floatY, currentPresetName, presets);
+                    Logger.Info("Migrated plaintext api_key to api_key_dpapi");
                 }
                 return true;
             } catch (Exception ex) {
@@ -267,11 +343,11 @@ namespace OmniDictApp {
                 sb.AppendLine("# OmniDict AI configuration");
                 sb.AppendLine("# Generated by OmniDict AI - do not edit while app is running");
                 sb.AppendLine();
-                sb.AppendLine("api_base       = \"" + (apiBase ?? "") + "\"");
-                sb.AppendLine("api_key        = \"" + (apiKey ?? "") + "\"");
-                sb.AppendLine("model          = \"" + (model ?? "") + "\"");
+                sb.AppendLine("api_base       = \"" + Esc(apiBase) + "\"");
+                sb.AppendLine("api_key_dpapi  = \"" + ProtectKey(apiKey) + "\"");
+                sb.AppendLine("model          = \"" + Esc(model) + "\"");
                 sb.AppendLine("use_vision     = " + (useVision ? "true" : "false"));
-                sb.AppendLine("current_preset = \"" + (currentPresetName ?? "") + "\"");
+                sb.AppendLine("current_preset = \"" + Esc(currentPresetName) + "\"");
                 if (floatX >= 0 && floatY >= 0) {
                     sb.AppendLine("float_x        = " + ((int)floatX));
                     sb.AppendLine("float_y        = " + ((int)floatY));
@@ -280,9 +356,8 @@ namespace OmniDictApp {
                 if (presets != null) {
                     foreach (var p in presets) {
                         sb.AppendLine("[[presets]]");
-                        sb.AppendLine("name    = \"" + (p.Name ?? "").Replace("\"", "\\\"") + "\"");
-                        string esc = (p.Content ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r\n", "\\n").Replace("\n", "\\n");
-                        sb.AppendLine("content = \"" + esc + "\"");
+                        sb.AppendLine("name    = \"" + Esc(p.Name) + "\"");
+                        sb.AppendLine("content = \"" + Esc(p.Content) + "\"");
                         sb.AppendLine();
                     }
                 }

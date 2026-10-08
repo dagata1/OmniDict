@@ -48,15 +48,19 @@ $wpfPath = "$netPath\WPF"
   "/r:$wpfPath\WindowsBase.dll" `
   "/r:$netPath\System.Xaml.dll" `
   "/r:$netPath\System.dll" `
+  "/r:$netPath\System.Security.dll" `
   "/r:$netPath\System.Windows.Forms.dll" `
   "/r:$netPath\System.Drawing.dll" `
   /out:"OmniDict.exe" "Program.cs"
 ```
 
+GitHub Actions 会在每次推送和 PR 时自动编译，`OmniDict.exe` 可在对应运行的 Artifacts 中下载；推送 `v*` 标签时会自动发布到 Releases。
+
 ## ⚙️ 快速上手
 
 1. 启动 `OmniDict.exe`；
 2. 打开「设置」填入 OpenAI 兼容的 API 基础地址（如 `https://api.openai.com/v1/chat/completions`）及 API 密钥；
+   API 密钥使用 Windows DPAPI 按当前用户加密后保存在 `%AppData%\OmniDict\omnidict.toml`，旧版明文密钥会在启动时自动迁移；
 3. 点击「拉取列表」选取当前模型；
 4. 在任何游戏或软件中按下 **Alt + Q**，圈选屏幕任意区域即时查词与解析；按 **Alt + W** 瞬间关闭悬浮窗。
 
